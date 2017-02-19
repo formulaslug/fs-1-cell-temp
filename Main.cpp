@@ -27,7 +27,7 @@ int main() {
   chSysInit();
 
   // Activate CAN driver 1 (PA11 = CANRX, PA12 = CANTX)
-  CanBus canBus(CAN_SELF_NODE_ID, CanBusBaudRate::k250k, true);
+  CanBus canBus(CAN_SELF_NODE_ID, CanBusBaudRate::k250k, false);
   chibios_rt::Mutex canBusMut;
 
   thread heartbeatThread(NORMALPRIO + 3, heartbeatThreadFunc, canBus,
