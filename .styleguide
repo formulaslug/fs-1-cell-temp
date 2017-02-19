@@ -1,0 +1,50 @@
+cExtensions {
+  c
+  h
+}
+
+cppHeaderExtensions {
+  hpp
+  inc
+}
+
+cppSrcExtensions {
+  cpp
+}
+
+otherExtensions {
+}
+
+genFolderExclude {
+}
+
+genFileExclude {
+}
+
+modifiableFolderExclude {
+  \.git
+  build
+  ChibiOS
+}
+
+modifiableFileExclude {
+  StdLib\.cpp$
+  chconf\.h$
+  halconf\.h$
+  mcuconf\.h$
+}
+
+includeRelated {
+}
+
+includeCSys {
+}
+
+includeCppSys {
+}
+
+includeOtherLibs {
+}
+
+includeProject {
+}
