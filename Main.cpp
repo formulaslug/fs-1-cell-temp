@@ -21,8 +21,6 @@ static THD_FUNCTION(canTxThreadFunc, arg) {
     {
       // Lock from simultaneous thread access
       std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
-      // bunch of ugly (temporary) casting to get the canBus out of the one passed arg
-      // (*(CanBus *)((*(std::vector<void*> *)arg)[0])).send(0x00FF00FF55AA55AA);
       // Process all messages to transmit from the message transmission queue
       (CAN_BUS).processTxMessages();
     }
