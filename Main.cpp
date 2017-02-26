@@ -9,11 +9,66 @@
 #include "hal.h"
 #include "thread.h"
 
-#define CAN_SELF_NODE_ID 0x681
+// This is very, very temporary
+#define CAN_BUS_MUT *(chibios_rt::Mutex *)((*(std::vector<void*> *)arg)[1])
+#define CAN_BUS (*(CanBus *)((*(std::vector<void*> *)arg)[0]))
 
-void heartbeatThreadFunc(CanBus& canBus, chibios_rt::Mutex& canBusMut);
-void canRxThreadFunc(CanBus& canBus, chibios_rt::Mutex& canBusMut);
-void canTxThreadFunc(CanBus& canBus, chibios_rt::Mutex& canBusMut);
+static THD_WORKING_AREA(wa_canTxThreadFunc, 128);
+static THD_FUNCTION(canTxThreadFunc, arg) {
+  chRegSetThreadName("CAN TX");
+
+  while (true) {
+    {
+      // Lock from simultaneous thread access
+      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      // bunch of ugly (temporary) casting to get the canBus out of the one passed arg
+      // (*(CanBus *)((*(std::vector<void*> *)arg)[0])).send(0x00FF00FF55AA55AA);
+      // Process all messages to transmit from the message transmission queue
+      (CAN_BUS).processTxMessages();
+    }
+
+    chThdSleepMilliseconds(50); // changed from 50->200ms
+  }
+}
+
+static THD_WORKING_AREA(wa_canRxThreadFunc, 128);
+static THD_FUNCTION(canRxThreadFunc, arg) {
+  event_listener_t el;
+
+  chRegSetThreadName("CAN RX");
+  chEvtRegister(&CAND1.rxfull_event, &el, 0);
+
+  while (true) {
+    if (chEvtWaitAnyTimeout(ALL_EVENTS, MS2ST(100)) == 0) {
+      continue;
+    }
+    {
+      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      (CAN_BUS).processRxMessages();
+    }
+  }
+
+  chEvtUnregister(&CAND1.rxfull_event, &el);
+}
+
+/**
+ * @desc Performs periodic tasks every second
+ */
+static THD_WORKING_AREA(wa_heartbeatThreadFunc, 128);
+static THD_FUNCTION(heartbeatThreadFunc, arg) {
+  chRegSetThreadName("NODE HEARTBEAT");
+
+  while (1) {
+    // enqueue heartbeat message to g_canTxQueue
+    const HeartbeatMessage heartbeatMessage(kCobid_cellTempHeartbeat);
+    {
+      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      (CAN_BUS).queueTxMessage(heartbeatMessage);
+    }
+
+    chThdSleepMilliseconds(1000); // change from 1000ms to 1ms
+  }
+}
 
 int main() {
   /*
@@ -27,75 +82,33 @@ int main() {
   chSysInit();
 
   // Activate CAN driver 1 (PA11 = CANRX, PA12 = CANTX)
-  CanBus canBus(CAN_SELF_NODE_ID, CanBusBaudRate::k250k, false);
+  CanBus canBus(kNodeid_cellTemp, CanBusBaudRate::k250k, false);
   chibios_rt::Mutex canBusMut;
 
-  thread heartbeatThread(NORMALPRIO + 3, heartbeatThreadFunc, canBus,
-                         canBusMut);
+  // create void* compatible obj
+  std::vector<void*> args = {&canBus, &canBusMut};
+  // start the CAN TX/RX threads
+  chThdCreateStatic(wa_canTxThreadFunc, sizeof(wa_canTxThreadFunc), NORMALPRIO, canTxThreadFunc, &args);
+  chThdCreateStatic(wa_canRxThreadFunc, sizeof(wa_canRxThreadFunc), NORMALPRIO, canRxThreadFunc, &args);
+  // start the CAN heartbeat thread
+  chThdCreateStatic(wa_heartbeatThreadFunc, sizeof(wa_heartbeatThreadFunc), NORMALPRIO, heartbeatThreadFunc, &args);
 
-  // Start receiver thread
-  thread canRxThread(NORMALPRIO + 7, canRxThreadFunc, canBus, canBusMut);
-
-  // Start transmitter thread
-  thread canTxThread(NORMALPRIO + 7, canTxThreadFunc, canBus, canBusMut);
-
-  while (1) {
-    {
-      std::lock_guard<chibios_rt::Mutex> lock(canBusMut);
-
-      // print all transmitted messages
-      canBus.printTxAll();
-      // print all received messages
-      canBus.printRxAll();
-    }
-
+  // Successful startup indicator
+  for (int i = 0; i < 4; i++) {
+    palWriteLine(LINE_LED_GREEN, PAL_HIGH);
+    chThdSleepMilliseconds(50);
+    palWriteLine(LINE_LED_GREEN, PAL_LOW);
     chThdSleepMilliseconds(50);
   }
-}
 
-/**
- * @desc Performs period tasks every second
- */
-void heartbeatThreadFunc(CanBus& canBus, chibios_rt::Mutex& canBusMut) {
   while (1) {
-    // enqueue heartbeat message to g_canTxQueue
-    const HeartbeatMessage heartbeatMessage(kCobid_node3Heartbeat);
     {
       std::lock_guard<chibios_rt::Mutex> lock(canBusMut);
-      canBus.queueTxMessage(heartbeatMessage);
-    }
 
-    chThdSleepMilliseconds(1000);
-  }
-}
-
-void canRxThreadFunc(CanBus& canBus, chibios_rt::Mutex& canBusMut) {
-  event_listener_t el;
-
-  chRegSetThreadName("CAN RX");
-  chEvtRegister(&CAND1.rxfull_event, &el, 0);
-
-  while (true) {
-    if (chEvtWaitAnyTimeout(ALL_EVENTS, MS2ST(100)) == 0) {
-      continue;
-    }
-    {
-      std::lock_guard<chibios_rt::Mutex> lock(canBusMut);
-      canBus.processRxMessages();
-    }
-  }
-
-  chEvtUnregister(&CAND1.rxfull_event, &el);
-}
-
-void canTxThreadFunc(CanBus& canBus, chibios_rt::Mutex& canBusMut) {
-  chRegSetThreadName("CAN TX");
-
-  while (true) {
-    {
-      std::lock_guard<chibios_rt::Mutex> lock(canBusMut);
-      canBus.send(0x00FF00FF55AA55AA);
-      canBus.processTxMessages();
+      // // print all transmitted messages
+      // canBus.printTxAll();
+      // // print all received messages
+      // canBus.printRxAll();
     }
 
     chThdSleepMilliseconds(50);
