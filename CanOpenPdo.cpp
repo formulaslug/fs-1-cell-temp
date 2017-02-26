@@ -8,10 +8,10 @@ HeartbeatMessage::HeartbeatMessage(uint32_t id) {
   IDE = CAN_IDE_EXT;
   EID = id;
   RTR = CAN_RTR_DATA;
-  DLC = 8;
+  DLC = 2;
 
-  data8[0] = kPayloadHeartbeat >> 8;
-  data8[1] = kPayloadHeartbeat;
+  data8[0] = (kPayloadHeartbeat >> 8) & 0xFF; // MSB (32's 3rd byte)
+  data8[1] = kPayloadHeartbeat & 0xFF; // LSB (32's 4th byte)
 }
 
 ThrottleMessage::ThrottleMessage(uint16_t throttleVoltage, bool forwardSwitch) {
