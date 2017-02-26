@@ -88,22 +88,34 @@ void CanBus::setFilters(std::initializer_list<uint32_t> filters) {
 bool CanBus::send(uint64_t data) {
   static CANTxFrame msg;
 
-  msg.IDE = CAN_IDE_EXT;
-  msg.EID = m_id;
+  msg.IDE = CAN_IDE_STD;
+  msg.SID = m_id;
   msg.RTR = CAN_RTR_DATA;
   msg.DLC = 8;
-  msg.data32[0] = data & 0xFFFF;
-  msg.data32[1] = data >> 32;
+  msg.data32[0] = data >> 32; // MS 32 bits
+  msg.data32[1] = data & 0xFFFFFFFF; // LS 32 bits
 
   return send(msg);
 }
 
 bool CanBus::send(const CANTxFrame& msg) {
   if (canTransmit(&CAND1, CAN_ANY_MAILBOX, &msg, MS2ST(100)) == MSG_OK) {
-    palWriteLine(LINE_LED_GREEN, PAL_HIGH);
+    // success
+    for (int i = 0; i < 1; i++) {
+      palWriteLine(LINE_LED_GREEN, PAL_HIGH);
+      chThdSleepMilliseconds(100);
+      palWriteLine(LINE_LED_GREEN, PAL_LOW);
+      chThdSleepMilliseconds(100);
+    }
     return true;
   } else {
-    palWriteLine(LINE_LED_GREEN, PAL_LOW);
+    // failure
+    for (int i = 0; i < 3; i++) {
+      palWriteLine(LINE_LED_GREEN, PAL_HIGH);
+      chThdSleepMilliseconds(100);
+      palWriteLine(LINE_LED_GREEN, PAL_LOW);
+      chThdSleepMilliseconds(100);
+    }
     return false;
   }
 }
