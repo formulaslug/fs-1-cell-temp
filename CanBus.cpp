@@ -30,7 +30,7 @@ constexpr CANConfig MakeConfig(CanBusBaudRate baud, bool loopback) {
       btr |= CAN_BTR_BRP(239);
       break;
     case CanBusBaudRate::k250k:
-      btr |= CAN_BTR_BRP(11);
+      btr |= CAN_BTR_BRP(7);
       break;
     case CanBusBaudRate::k500k:
       btr |= CAN_BTR_BRP(5);
@@ -54,6 +54,10 @@ CanBus::CanBus(uint32_t id, CanBusBaudRate baud, bool loopback) {
 
   CANConfig config = MakeConfig(baud, loopback);
   canStart(&CAND1, &config);
+
+  // config the pins
+  palSetPadMode(GPIOA, 11, PAL_MODE_ALTERNATE(9));  // CAN RX
+  palSetPadMode(GPIOA, 12, PAL_MODE_ALTERNATE(9));  // CAN TX
 
   palWriteLine(LINE_LED_GREEN, PAL_LOW);
 }
