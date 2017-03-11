@@ -18,7 +18,7 @@ class SpiBus {
   ~SpiBus();
   void send(uint8_t length, const void * txbuf);
   void recv(uint8_t length, void * rxbuf);
-  void acquireSlave();
+  void acquireSlave(uint8_t ssPinIndex);
   void releaseSlave();
 
  private:
@@ -26,7 +26,7 @@ class SpiBus {
   // void tickSlaveSelect();
 
   // private vars
-  uint8_t *m_ssPins;
+  uint8_t *m_slavePins;
   uint8_t m_numSlaves;
-  SPIConfig m_config;
+  SPIConfig m_slaveConfigs[kSPImaxSlaves];
 };

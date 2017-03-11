@@ -9,7 +9,6 @@
 #include "ch.hpp"
 #include "hal.h"
 #include "thread.h"
-// #include "spi.h"
 
 // This is very, very temporary
 #define CAN_BUS (*(CanBus *)((*(std::vector<void*> *)arg)[0]))
@@ -18,7 +17,8 @@
 /*
  * SPI TX and RX buffers.
  */
-static uint8_t txbuf[1] = {0xc0};
+// 0b00110000=<null><null><start><single-ended><d2><d1><d0>
+static uint8_t txbuf[1] = {0x30};
 static uint8_t rxbuf[2];
 
 /*
@@ -33,11 +33,21 @@ static THD_FUNCTION(spi_thread_2, arg) {
   SpiBus *spiBus = new SpiBus(SpiBusBaudRate::k140k, ssPins, 1);
 
   while (true) {
-    spiBus->acquireSlave();
+    spiBus->acquireSlave(0);
     spiBus->send(1, txbuf);
     spiBus->recv(2, rxbuf);
     spiBus->releaseSlave();
-    chThdSleepMilliseconds(10);
+    uint32_t r;
+    // TODO: annotate bit twiddles
+    r = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
+    const HeartbeatMessage analogReading(r);
+    {
+      // Lock from simultaneous thread access
+      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      // queue CAN message with copy of contents of rxbuf
+      (CAN_BUS).queueTxMessage(analogReading);
+    }
+    chThdSleepMilliseconds(100);
   }
 }
 
@@ -86,13 +96,10 @@ static THD_FUNCTION(heartbeatThreadFunc, arg) {
 
   while (1) {
     // enqueue heartbeat message to g_canTxQueue
-    // const HeartbeatMessage heartbeatMessage(kCobid_cellTempHeartbeat);
-    const HeartbeatMessage heartbeatMessage((uint32_t)rxbuf);
+    const HeartbeatMessage heartbeatMessage(kNodeid_cellTemp);
     {
       std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
       (CAN_BUS).queueTxMessage(heartbeatMessage);
-      // write test byte to the SPI bus
-      // writeByteSPI(0x20, 0xcF);
     }
 
     chThdSleepMilliseconds(1000); // change from 1000ms to 1ms
@@ -114,8 +121,6 @@ int main() {
   // Activate CAN driver 1 (PA11 = CANRX, PA12 = CANTX)
   CanBus canBus(kNodeid_cellTemp, CanBusBaudRate::k250k, false);
   chibios_rt::Mutex canBusMut;
-  // Activate SPI driver 1
-  uint8_t ssPins[1] = { 4 };
   // SpiBus spiBus(SpiBusBaudRate::k140k, ssPins, 1);
   chibios_rt::Mutex spiBusMut;
 
@@ -129,7 +134,7 @@ int main() {
 
   // Start SPI thread
   chThdCreateStatic(spi_thread_2_wa, sizeof(spi_thread_2_wa),
-                    NORMALPRIO + 1, spi_thread_2, NULL);
+                    NORMALPRIO + 1, spi_thread_2, &args);
 
   // Successful startup indicator
   for (int i = 0; i < 4; i++) {
