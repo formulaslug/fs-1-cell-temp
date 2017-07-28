@@ -17,7 +17,7 @@
 /*
  * SPI TX and RX buffers.
  */
-// 0b00110000=<null><null><start><single-ended><d2><d1><d0>
+// 0b00110000=<null><null><start><single-ended><d2><d1><d0><null>
 static uint8_t txbuf[1] = {0x30};
 static uint8_t rxbuf[2];
 
@@ -39,6 +39,9 @@ static THD_FUNCTION(spi_thread_2, arg) {
     spiBus->releaseSlave();
     uint32_t r;
     // TODO: annotate bit twiddles
+    // A) ((lower 7 of byte 0) << 3) | (lower 3 of byte 1)
+    // B) (upper 7 bits of the reading, in the upper 7 position) |
+    //      (lower 3 bits of the second byte, in the lower 3 position)
     r = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
     const HeartbeatMessage analogReading(r);
     {
