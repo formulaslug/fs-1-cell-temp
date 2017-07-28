@@ -38,7 +38,6 @@ static THD_FUNCTION(spi_thread_2, arg) {
     spiBus->recv(2, rxbuf);
     spiBus->releaseSlave();
     uint32_t r;
-    // TODO: annotate bit twiddles
     // A) ((lower 7 of byte 0) << 3) | (lower 3 of byte 1)
     // B) (upper 7 bits of the reading, in the upper 7 position) |
     //      (lower 3 bits of the second byte, in the lower 3 position)
@@ -54,6 +53,9 @@ static THD_FUNCTION(spi_thread_2, arg) {
   }
 }
 
+/*
+ * CAN TX thread
+ */
 static THD_WORKING_AREA(wa_canTxThreadFunc, 128);
 static THD_FUNCTION(canTxThreadFunc, arg) {
   chRegSetThreadName("CAN TX");
@@ -70,6 +72,9 @@ static THD_FUNCTION(canTxThreadFunc, arg) {
   }
 }
 
+/*
+ * CAN RX thread
+ */
 static THD_WORKING_AREA(wa_canRxThreadFunc, 128);
 static THD_FUNCTION(canRxThreadFunc, arg) {
   event_listener_t el;
