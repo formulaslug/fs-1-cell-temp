@@ -42,12 +42,15 @@ static THD_FUNCTION(spi_thread_2, arg) {
     // B) (upper 7 bits of the reading, in the upper 7 position) |
     //      (lower 3 bits of the second byte, in the lower 3 position)
     r = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
-    const HeartbeatMessage analogReading(r);
+    uint8_t cell_module_readings[7];
+    cell_module_readings[0] = r >> 2; // drop the lowest two bits
+    const CellTempMessage cellTempMessage(kFuncid_cellTemp_adc1,
+                                          cell_module_readings);
     {
       // Lock from simultaneous thread access
       std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
-      // queue CAN message with copy of contents of rxbuf
-      (CAN_BUS).queueTxMessage(analogReading);
+      // queue CAN message for one set of 7 cell modules
+      (CAN_BUS).queueTxMessage(cellTempMessage);
     }
     chThdSleepMilliseconds(100);
   }

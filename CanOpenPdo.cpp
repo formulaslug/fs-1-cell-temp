@@ -4,6 +4,17 @@
 
 #include <cstring>
 
+CellTempMessage::CellTempMessage(uint32_t adc_chip_id,
+                                 uint8_t cell_module_readings[7]) {
+  IDE = CAN_IDE_EXT;
+  EID = kSysid_fs | kNodeid_cellTemp | adc_chip_id;
+  RTR = CAN_RTR_DATA;
+  DLC = 7; // num data bytes in frame
+
+  // copy passed data into frame's data bytes
+  std::memcpy(data8, cell_module_readings, 7 * sizeof(uint8_t));
+}
+
 HeartbeatMessage::HeartbeatMessage(uint32_t id) {
   IDE = CAN_IDE_EXT;
   EID = id;
