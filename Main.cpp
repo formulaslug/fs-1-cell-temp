@@ -1,18 +1,18 @@
-// Copyright (c) Formula Slug 2016. All Rights Reserved.
+// Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
 #include <array>
 #include <mutex>
 
-#include "SpiBus.h"
 #include "CanBus.h"
 #include "CanOpenPdo.h"
+#include "SpiBus.h"
 #include "ch.hpp"
 #include "hal.h"
 #include "thread.h"
 
 // This is very, very temporary
-#define CAN_BUS (*(CanBus *)((*(std::vector<void*> *)arg)[0]))
-#define CAN_BUS_MUT *(chibios_rt::Mutex *)((*(std::vector<void*> *)arg)[1])
+#define CAN_BUS (*(CanBus*)((*(std::vector<void*>*)arg)[0]))
+#define CAN_BUS_MUT *(chibios_rt::Mutex*)((*(std::vector<void*>*)arg)[1])
 
 /*
  * SPI TX and RX buffers.
@@ -26,11 +26,10 @@ static uint8_t rxbuf[2];
  */
 static THD_WORKING_AREA(spi_thread_2_wa, 256);
 static THD_FUNCTION(spi_thread_2, arg) {
-
   chRegSetThreadName("SPI thread 2");
 
-  uint8_t ssPins[1] = { 4 };
-  SpiBus *spiBus = new SpiBus(SpiBusBaudRate::k140k, ssPins, 1);
+  uint8_t ssPins[1] = {4};
+  SpiBus* spiBus = new SpiBus(SpiBusBaudRate::k140k, ssPins, 1);
 
   while (true) {
     spiBus->acquireSlave(0);
@@ -68,7 +67,7 @@ static THD_FUNCTION(canTxThreadFunc, arg) {
       (CAN_BUS).processTxMessages();
     }
 
-    chThdSleepMilliseconds(50); // changed from 50->200ms
+    chThdSleepMilliseconds(50);  // changed from 50->200ms
   }
 }
 
@@ -110,7 +109,7 @@ static THD_FUNCTION(heartbeatThreadFunc, arg) {
       (CAN_BUS).queueTxMessage(heartbeatMessage);
     }
 
-    chThdSleepMilliseconds(1000); // change from 1000ms to 1ms
+    chThdSleepMilliseconds(1000);  // change from 1000ms to 1ms
   }
 }
 
@@ -133,16 +132,19 @@ int main() {
   chibios_rt::Mutex spiBusMut;
 
   // create void* compatible obj
-  std::vector<void*> args = {&canBus, &canBusMut}; //, &spiBus, &spiBusMut};
+  std::vector<void*> args = {&canBus, &canBusMut};  //, &spiBus, &spiBusMut};
   // start the CAN TX/RX threads
-  chThdCreateStatic(wa_canTxThreadFunc, sizeof(wa_canTxThreadFunc), NORMALPRIO, canTxThreadFunc, &args);
-  chThdCreateStatic(wa_canRxThreadFunc, sizeof(wa_canRxThreadFunc), NORMALPRIO, canRxThreadFunc, &args);
+  chThdCreateStatic(wa_canTxThreadFunc, sizeof(wa_canTxThreadFunc), NORMALPRIO,
+                    canTxThreadFunc, &args);
+  chThdCreateStatic(wa_canRxThreadFunc, sizeof(wa_canRxThreadFunc), NORMALPRIO,
+                    canRxThreadFunc, &args);
   // start the CAN heartbeat thread
-  chThdCreateStatic(wa_heartbeatThreadFunc, sizeof(wa_heartbeatThreadFunc), NORMALPRIO, heartbeatThreadFunc, &args);
+  chThdCreateStatic(wa_heartbeatThreadFunc, sizeof(wa_heartbeatThreadFunc),
+                    NORMALPRIO, heartbeatThreadFunc, &args);
 
   // Start SPI thread
-  chThdCreateStatic(spi_thread_2_wa, sizeof(spi_thread_2_wa),
-                    NORMALPRIO + 1, spi_thread_2, &args);
+  chThdCreateStatic(spi_thread_2_wa, sizeof(spi_thread_2_wa), NORMALPRIO + 1,
+                    spi_thread_2, &args);
 
   // Successful startup indicator
   for (int i = 0; i < 4; i++) {

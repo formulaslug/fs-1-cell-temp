@@ -1,4 +1,4 @@
-// Copyright (c) Formula Slug 2016. All Rights Reserved.
+// Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
 #include "CanOpenPdo.h"
 
@@ -10,8 +10,8 @@ HeartbeatMessage::HeartbeatMessage(uint32_t id) {
   RTR = CAN_RTR_DATA;
   DLC = 2;
 
-  data8[0] = (kPayloadHeartbeat >> 8) & 0xFF; // MSB (32's 3rd byte)
-  data8[1] = kPayloadHeartbeat & 0xFF; // LSB (32's 4th byte)
+  data8[0] = (kPayloadHeartbeat >> 8) & 0xFF;  // MSB (32's 3rd byte)
+  data8[1] = kPayloadHeartbeat & 0xFF;         // LSB (32's 4th byte)
 }
 
 ThrottleMessage::ThrottleMessage(uint16_t throttleVoltage, bool forwardSwitch) {

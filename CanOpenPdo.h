@@ -1,4 +1,4 @@
-// Copyright (c) Formula Slug 2016. All Rights Reserved.
+// Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
 #pragma once
 
@@ -21,11 +21,11 @@ constexpr uint32_t kNodeid_primary = 0x001;
 constexpr uint32_t kNodeid_secondary = 0x002;
 constexpr uint32_t kNodeid_cellTemp = 0x003;
 constexpr uint32_t kCobid_TPDO5 = 0x241;  // including throttle voltage payload
-constexpr uint32_t kCobid_node3Heartbeat = 0x611; // changed from 0x003
-constexpr uint32_t kCobid_node4Heartbeat = 0x621; // changed from 0x004
+constexpr uint32_t kCobid_node3Heartbeat = 0x611;  // changed from 0x003
+constexpr uint32_t kCobid_node4Heartbeat = 0x621;  // changed from 0x004
 constexpr uint32_t kCobid_cellTempHeartbeat = 0x631;
-constexpr uint32_t kCobid_p2s = 0x613; // changed from 0x013
-constexpr uint32_t kCobid_s2p = 0x622; // changed from 0x014
+constexpr uint32_t kCobid_p2s = 0x613;  // changed from 0x013
+constexpr uint32_t kCobid_s2p = 0x622;  // changed from 0x014
 
 // Payload constants
 constexpr uint32_t kPayloadHeartbeat = 0x1;

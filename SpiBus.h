@@ -1,4 +1,4 @@
-// Copyright (c) Formula Slug 2016. All Rights Reserved.
+// Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
 #pragma once
 
@@ -14,10 +14,10 @@ enum class SpiBusBaudRate : uint8_t {
 
 class SpiBus {
  public:
-  SpiBus(SpiBusBaudRate baud, uint8_t *ssPins, uint8_t numSlaves);
+  SpiBus(SpiBusBaudRate baud, uint8_t* ssPins, uint8_t numSlaves);
   ~SpiBus();
-  void send(uint8_t length, const void * txbuf);
-  void recv(uint8_t length, void * rxbuf);
+  void send(uint8_t length, const void* txbuf);
+  void recv(uint8_t length, void* rxbuf);
   void acquireSlave(uint8_t ssPinIndex);
   void releaseSlave();
 
@@ -26,7 +26,7 @@ class SpiBus {
   // void tickSlaveSelect();
 
   // private vars
-  uint8_t *m_slavePins;
+  uint8_t* m_slavePins;
   uint8_t m_numSlaves;
   SPIConfig m_slaveConfigs[kSPImaxSlaves];
 };

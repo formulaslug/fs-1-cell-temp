@@ -1,4 +1,4 @@
-// Copyright (c) Formula Slug 2016. All Rights Reserved.
+// Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
 #include "CanBus.h"
 
@@ -92,8 +92,8 @@ bool CanBus::send(uint64_t data) {
   msg.SID = m_id;
   msg.RTR = CAN_RTR_DATA;
   msg.DLC = 8;
-  msg.data32[0] = data >> 32; // MS 32 bits
-  msg.data32[1] = data & 0xFFFFFFFF; // LS 32 bits
+  msg.data32[0] = data >> 32;         // MS 32 bits
+  msg.data32[1] = data & 0xFFFFFFFF;  // LS 32 bits
 
   return send(msg);
 }

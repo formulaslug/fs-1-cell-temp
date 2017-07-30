@@ -1,10 +1,8 @@
-// Copyright (c) Formula Slug 2016. All Rights Reserved.
+// Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
 #include "thread.h"
 
-thread::thread(thread&& rhs) noexcept {
-  *this = std::move(rhs);
-}
+thread::thread(thread&& rhs) noexcept { *this = std::move(rhs); }
 
 thread& thread::operator=(thread&& rhs) noexcept {
   if (rhs.m_joinable == false) {
