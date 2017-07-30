@@ -99,8 +99,8 @@ static THD_FUNCTION(canTxThreadFunc, arg) {
       // Process all messages to transmit from the message transmission queue
       (CAN_BUS).processTxMessages();
     }
-
-    chThdSleepMilliseconds(50); // changed from 50->200ms
+    // throttle back thread runloop to prevent overconsumption of resources
+    chThdSleepMilliseconds(50);
   }
 }
 
@@ -141,8 +141,8 @@ static THD_FUNCTION(heartbeatThreadFunc, arg) {
       std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
       (CAN_BUS).queueTxMessage(heartbeatMessage);
     }
-
-    chThdSleepMilliseconds(1000); // change from 1000ms to 1ms
+    // transmit node's (self) heartbeat every 1s
+    chThdSleepMilliseconds(1000);
   }
 }
 
