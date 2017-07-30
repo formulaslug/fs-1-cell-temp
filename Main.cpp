@@ -45,7 +45,7 @@ static THD_FUNCTION(spi_thread_2, arg) {
     // Read analog analog values on 7 of the 8 channels on the 4 ADC chips
     // and dump them on CAN network as 4 separate frames for each chip (set of
     // 7 cell modules)
-    for (uint8_t chip_index = 0; chip_index < kNumADCSlaves; ++chip_index) {
+    for (uint8_t chip_index = 0; chip_index < kNumAdcSlaves; ++chip_index) {
       // spiBus->acquireSlave(2); // chip 2 not working
       // for each channel on the current chip
       for (uint8_t channel_index = 0; channel_index < kNumAdcChannels;
