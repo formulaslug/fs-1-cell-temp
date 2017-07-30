@@ -25,10 +25,7 @@ constexpr uint32_t kSysid_fs = 0x600;
 constexpr uint32_t kNodeid_primary = 0x010;
 constexpr uint32_t kNodeid_secondary = 0x020;
 constexpr uint32_t kNodeid_cellTemp = 0x030;
-constexpr uint32_t kFuncid_cellTemp_adc1 = 0x002;
-constexpr uint32_t kFuncid_cellTemp_adc2 = 0x003;
-constexpr uint32_t kFuncid_cellTemp_adc3 = 0x004;
-constexpr uint32_t kFuncid_cellTemp_adc4 = 0x005;
+constexpr uint32_t kFuncid_cellTemp_adc[4] = { 0x002, 0x003, 0x004, 0x005 };
 
 constexpr uint32_t kCobid_TPDO5 = 0x241;  // including throttle voltage payload
 constexpr uint32_t kCobid_node3Heartbeat = 0x611; // changed from 0x003
