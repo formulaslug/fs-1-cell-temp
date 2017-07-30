@@ -78,7 +78,7 @@ void CanBus::setFilters(std::initializer_list<uint32_t> filters) {
 
     filterArray.push_back(temp);
 
-    i++;
+    ++i;
   }
 
   // TODO: filters currently do nothing
@@ -101,7 +101,7 @@ bool CanBus::send(uint64_t data) {
 bool CanBus::send(const CANTxFrame& msg) {
   if (canTransmit(&CAND1, CAN_ANY_MAILBOX, &msg, MS2ST(100)) == MSG_OK) {
     // success
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 1; ++i) {
       palWriteLine(LINE_LED_GREEN, PAL_HIGH);
       chThdSleepMilliseconds(100);
       palWriteLine(LINE_LED_GREEN, PAL_LOW);
@@ -110,7 +110,7 @@ bool CanBus::send(const CANTxFrame& msg) {
     return true;
   } else {
     // failure
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; ++i) {
       palWriteLine(LINE_LED_GREEN, PAL_HIGH);
       chThdSleepMilliseconds(100);
       palWriteLine(LINE_LED_GREEN, PAL_LOW);

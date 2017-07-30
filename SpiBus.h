@@ -14,7 +14,8 @@ enum class SpiBusBaudRate : uint8_t {
 
 class SpiBus {
  public:
-  SpiBus(SpiBusBaudRate baud, uint8_t* ssPins, uint8_t numSlaves);
+  SpiBus(SpiBusBaudRate baud, const uint8_t* slave_pins,
+         const uint8_t num_slaves);
   ~SpiBus();
   void send(uint8_t length, const void* txbuf);
   void recv(uint8_t length, void* rxbuf);
@@ -22,11 +23,7 @@ class SpiBus {
   void releaseSlave();
 
  private:
-  // private member functions
-  // void tickSlaveSelect();
-
   // private vars
-  uint8_t* m_slavePins;
   uint8_t m_numSlaves;
   SPIConfig m_slaveConfigs[kSPImaxSlaves];
 };
