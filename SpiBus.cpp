@@ -20,25 +20,26 @@ constexpr SPIConfig MakeConfig(SpiBusBaudRate baud, uint8_t ssPin) {
       break;
   }
 
-  // hard-coded to have chip selects on GPIOA
+  // slave selects hard-coded to port A
   return { NULL, GPIOA, ssPin, cr1, cr2 };
 }
 
-SpiBus::SpiBus(SpiBusBaudRate baud, uint8_t *slavePins, uint8_t numSlaves) {
+SpiBus::SpiBus(SpiBusBaudRate baud, const uint8_t *slave_pins, const uint8_t num_slaves) {
   // init private vars from params
-  m_slavePins = slavePins;
-  m_numSlaves = numSlaves;
+  m_numSlaves = num_slaves;
 
   // init SPI pins
   palSetPadMode(GPIOA, 5, PAL_MODE_ALTERNATE(5) | PAL_STM32_OSPEED_HIGHEST); // SCK
   palSetPadMode(GPIOA, 6, PAL_MODE_ALTERNATE(5) | PAL_STM32_OSPEED_HIGHEST); // MISO
   palSetPadMode(GPIOA, 7, PAL_MODE_ALTERNATE(5) | PAL_STM32_OSPEED_HIGHEST); // MOSI
-  palSetPadMode(GPIOA, 4, PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST); // CS
-  palSetPad(GPIOA, 4);
+  palSetPadMode(GPIOA, slave_pins[0], PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
+  palSetPadMode(GPIOA, slave_pins[1], PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
+  palSetPadMode(GPIOA, slave_pins[2], PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
+  palSetPadMode(GPIOA, slave_pins[3], PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
 
   // create all config structs for each slave
-  for (uint8_t i = 0; i < numSlaves; i++) {
-    m_slaveConfigs[i] = MakeConfig(baud, slavePins[i]);
+  for (uint8_t slave_index = 0; slave_index < m_numSlaves; ++slave_index) {
+    m_slaveConfigs[slave_index] = MakeConfig(baud, slave_pins[slave_index]);
   }
 }
 
