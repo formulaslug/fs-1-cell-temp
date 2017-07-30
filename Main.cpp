@@ -161,23 +161,37 @@ int main() {
   // Activate CAN driver 1 (PA11 = CANRX, PA12 = CANTX)
   CanBus canBus(kNodeid_cellTemp, CanBusBaudRate::k250k, false);
   chibios_rt::Mutex canBusMut;
-  // SpiBus spiBus(SpiBusBaudRate::k140k, ssPins, 1);
   chibios_rt::Mutex spiBusMut;
 
   // create void* compatible obj
   std::vector<void*> args = {&canBus, &canBusMut}; //, &spiBus, &spiBusMut};
-  // start the CAN TX/RX threads
-  chThdCreateStatic(wa_canTxThreadFunc, sizeof(wa_canTxThreadFunc), NORMALPRIO, canTxThreadFunc, &args);
-  chThdCreateStatic(wa_canRxThreadFunc, sizeof(wa_canRxThreadFunc), NORMALPRIO, canRxThreadFunc, &args);
-  // start the CAN heartbeat thread
-  chThdCreateStatic(wa_heartbeatThreadFunc, sizeof(wa_heartbeatThreadFunc), NORMALPRIO, heartbeatThreadFunc, &args);
 
+  // start the CAN TX/RX threads
+  chThdCreateStatic( wa_canTxThreadFunc,
+                     sizeof(wa_canTxThreadFunc),
+                     NORMALPRIO,
+                     canTxThreadFunc,
+                     &args );
+  chThdCreateStatic( wa_canRxThreadFunc,
+                     sizeof(wa_canRxThreadFunc),
+                     NORMALPRIO,
+                     canRxThreadFunc,
+                     &args );
+  // start the CAN heartbeat thread
+  chThdCreateStatic( wa_heartbeatThreadFunc,
+                     sizeof(wa_heartbeatThreadFunc),
+                     NORMALPRIO,
+                     heartbeatThreadFunc,
+                     &args );
   // Start SPI thread
-  chThdCreateStatic(spi_thread_2_wa, sizeof(spi_thread_2_wa),
-                    NORMALPRIO + 1, spi_thread_2, &args);
+  chThdCreateStatic( spi_thread_2_wa,
+                     sizeof(spi_thread_2_wa),
+                     NORMALPRIO + 1,
+                     spi_thread_2,
+                     &args );
 
   // Successful startup indicator
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; ++i) {
     palWriteLine(LINE_LED_GREEN, PAL_HIGH);
     chThdSleepMilliseconds(50);
     palWriteLine(LINE_LED_GREEN, PAL_LOW);
