@@ -85,7 +85,7 @@ static THD_FUNCTION(spi_thread_2, arg) {
     }
 
     // throttle back thread runloop to prevent overconsumption of resources
-    chThdSleepMilliseconds(100);
+    chThdSleepMilliseconds(50);
   }
 }
 
