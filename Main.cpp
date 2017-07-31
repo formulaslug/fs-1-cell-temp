@@ -14,6 +14,9 @@
 #define CAN_BUS (*(CanBus*)((*(std::vector<void*>*)arg)[0]))
 #define CAN_BUS_MUT *(chibios_rt::Mutex*)((*(std::vector<void*>*)arg)[1])
 
+// module function prototypes
+uint8_t adc_to_temp(uint8_t* rxbuf);
+
 /*
  * SPI TX and RX buffers.
  */
@@ -38,7 +41,6 @@ static THD_FUNCTION(spi_thread_2, arg) {
 
   uint8_t txbuf[1];  // empty buff for commands to external ADC chips
   uint8_t cell_module_readings[kNumAdcChannels];
-  uint16_t temp = 0;
 
   while (true) {
     // TODO: Make an iterator for the SpiBus based on subsets of slaves
@@ -57,13 +59,8 @@ static THD_FUNCTION(spi_thread_2, arg) {
         // send command word then read in data
         spiBus->send(1, txbuf);
         spiBus->recv(2, rxbuf);
-        // A) ((lower 7 of byte 0) << 3) | (lower 3 of byte 1)
-        // B) (upper 7 bits of the reading, in the upper 7 position) |
-        //      (lower 3 bits of the second byte, in the lower 3 position)
-        //
-        temp = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
         // temporarily just dropping the lower 2 bits to pack into single byte
-        cell_module_readings[channel_index] = temp >> 2;
+        cell_module_readings[channel_index] = adc_to_temp(rxbuf);
         // release for next chip, channel
         spiBus->releaseSlave();
       }
@@ -196,4 +193,41 @@ int main() {
 
     chThdSleepMilliseconds(50);
   }
+}
+
+// module utility functions
+// @brief Convert bytes in RX buffer from ADC reading to temperature
+// @return temp Temperature in degrees C, resolution of .25
+uint8_t adc_to_temp(uint8_t* rxbuf) {
+  static uint16_t raw{};
+  static int norm{};
+  // voltage at max supported temperature (63.75C)
+  static constexpr float kMaxTempVoltage = 1.4875;
+  static constexpr float kMinTempVoltage = 2.17;
+  static constexpr float kVRef = 3.316;
+  static constexpr float kAdcMax = 1023.0;
+  // true resolution of ~ 211.5 values across 0-63.75C
+  static constexpr float kMaxTempValue =
+      (kMaxTempVoltage / kVRef) * kAdcMax;  // ~ 461.125
+  static constexpr float kMinTempValue =
+      (kMinTempVoltage / kVRef) * kAdcMax;  // ~ 672.7
+  static constexpr float kMaxIntegerValue =
+      kMinTempValue - kMaxTempValue;  // ~ 211.575
+  // unpack raw reading to continuous 10 bits
+  // A) ((lower 7 of byte 0) << 3) | (lower 3 of byte 1)
+  // B) (upper 7 bits of the reading, in the upper 7 position) |
+  //      (lower 3 bits of the second byte, in the lower 3 position)
+  //
+  raw = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
+  // normalize to 0=63.75C to 255=0C
+  // (decode to degree C by dividing by 4...bit shifting right by 2)
+  norm = ((raw - kMaxTempValue) / kMaxIntegerValue) * 255;
+  // top-out temp at 63.75C and bottom-out at 0C
+  if (norm < 0) {
+    norm = 0;
+  } else if (norm > 255) {
+    norm = 255;
+  }
+  // normalize to 0=0C 255=63.75C and return
+  return (255 - norm);
 }
