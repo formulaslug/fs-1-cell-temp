@@ -48,22 +48,29 @@ static THD_FUNCTION(spi_thread_2, arg) {
     // and dump them on CAN network as 4 separate frames for each chip (set of
     // 7 cell modules)
     for (uint8_t chip_index = 0; chip_index < kNumAdcSlaves; ++chip_index) {
+
       // spiBus->acquireSlave(2); // chip 2 not working
       // for each channel on the current chip
       for (uint8_t channel_index = 0; channel_index < kNumAdcChannels;
            ++channel_index) {
+
         // acquire for current chip, current channel
         spiBus->acquireSlave(chip_index);
+
         // set the channel address in LS nibble (LS bit is null, so << 1)
         txbuf[0] = kBaseCommand | (channel_index << 1);
+
         // send command word then read in data
         spiBus->send(1, txbuf);
         spiBus->recv(2, rxbuf);
+
         // temporarily just dropping the lower 2 bits to pack into single byte
         cell_module_readings[channel_index] = adc_to_temp(rxbuf);
+
         // release for next chip, channel
         spiBus->releaseSlave();
       }
+
       // pack 7 module temp readings into CAN frame
       const CellTempMessage cellTempMessage(kFuncid_cellTemp_adc[chip_index],
                                             cell_module_readings);
@@ -71,10 +78,12 @@ static THD_FUNCTION(spi_thread_2, arg) {
       {
         // Lock from simultaneous thread access
         std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+
         // queue CAN message for one set of 7 cell modules
         (CAN_BUS).queueTxMessage(cellTempMessage);
       }
     }
+
     // throttle back thread runloop to prevent overconsumption of resources
     chThdSleepMilliseconds(100);
   }
@@ -201,11 +210,13 @@ int main() {
 uint8_t adc_to_temp(uint8_t* rxbuf) {
   static uint16_t raw{};
   static int norm{};
+
   // voltage at max supported temperature (63.75C)
   static constexpr float kMaxTempVoltage = 1.4875;
   static constexpr float kMinTempVoltage = 2.17;
   static constexpr float kVRef = 3.316;
   static constexpr float kAdcMax = 1023.0;
+
   // true resolution of ~ 211.5 values across 0-63.75C
   static constexpr float kMaxTempValue =
       (kMaxTempVoltage / kVRef) * kAdcMax;  // ~ 461.125
@@ -213,21 +224,25 @@ uint8_t adc_to_temp(uint8_t* rxbuf) {
       (kMinTempVoltage / kVRef) * kAdcMax;  // ~ 672.7
   static constexpr float kMaxIntegerValue =
       kMinTempValue - kMaxTempValue;  // ~ 211.575
+
   // unpack raw reading to continuous 10 bits
   // A) ((lower 7 of byte 0) << 3) | (lower 3 of byte 1)
   // B) (upper 7 bits of the reading, in the upper 7 position) |
   //      (lower 3 bits of the second byte, in the lower 3 position)
   //
   raw = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
+
   // normalize to 0=63.75C to 255=0C
   // (decode to degree C by dividing by 4...bit shifting right by 2)
   norm = ((raw - kMaxTempValue) / kMaxIntegerValue) * 255;
+
   // top-out temp at 63.75C and bottom-out at 0C
   if (norm < 0) {
     norm = 0;
   } else if (norm > 255) {
     norm = 255;
   }
+
   // normalize to 0=0C 255=63.75C and return
   return (255 - norm);
 }
