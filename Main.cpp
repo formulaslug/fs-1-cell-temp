@@ -236,6 +236,7 @@ uint8_t adc_to_temp(uint8_t* rxbuf) {
   // (decode to degree C by dividing by 4...bit shifting right by 2)
   norm = ((raw - kMaxTempValue) / kMaxIntegerValue) * 255;
 
+  // TODO: Try std::clamp (-std=c++1z didn't work)
   // top-out temp at 63.75C and bottom-out at 0C
   if (norm < 0) {
     norm = 0;
