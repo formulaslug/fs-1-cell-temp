@@ -2,6 +2,7 @@
 
 #include <array>
 #include <mutex>
+#include <vector>
 
 #include "CanBus.h"
 #include "CanOpenPdo.h"
@@ -15,7 +16,44 @@
 #define CAN_BUS_MUT *(chibios_rt::Mutex*)((*(std::vector<void*>*)arg)[1])
 
 // module function prototypes
-uint8_t adc_to_temp(uint8_t* rxbuf);
+// uint8_t adc_to_temp(uint8_t * rxbuf, std::vector<std::vector<float>> &voltage_to_temp);
+uint8_t adc_to_temp(uint8_t * rxbuf);
+
+// TODO: remove from global namespace
+// TODO: use vectors
+// static std::vector<std::vector<float>> g_voltage_to_temp {
+static constexpr uint8_t g_kVoltageToTempLength = 73;
+static constexpr uint8_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
+static float g_voltage_to_temp[g_kVoltageToTempLength][3] = {
+  {1.48, .03, 65}, {1.48, .03, 65}, {1.48, .03, 65},  // 65C range
+  {1.51, .04, 60}, {1.51, .04, 60}, {1.51, .04, 60},  // 60C range
+  {1.51, .04, 60},
+  {1.55, .04, 55}, {1.55, .04, 55}, {1.55, .04, 55},  // 55C range
+  {1.55, .04, 55},
+  {1.59, .04, 50}, {1.59, .04, 50}, {1.59, .04, 50},  // 50C range
+  {1.59, .04, 50},
+  {1.63, .04, 45}, {1.63, .04, 45}, {1.63, .04, 45},  // 45C range
+  {1.63, .04, 45},
+  {1.68, .05, 40}, {1.68, .05, 40}, {1.68, .05, 40},  // 40C range
+  {1.68, .05, 40}, {1.68, .05, 40},
+  {1.74, .06, 35}, {1.74, .06, 35}, {1.74, .06, 35},  // 35C range
+  {1.74, .06, 35}, {1.74, .06, 35}, {1.74, .06, 35},
+  {1.80, .06, 30}, {1.80, .06, 30}, {1.80, .06, 30},  // 30C range
+  {1.80, .06, 30}, {1.80, .06, 30}, {1.80, .06, 30},
+  {1.86, .06, 25}, {1.86, .06, 25}, {1.86, .06, 25},  // 25C range
+  {1.86, .06, 25}, {1.86, .06, 25}, {1.86, .06, 25},
+  {1.92, .06, 20}, {1.92, .06, 20}, {1.92, .06, 20},  // 20C range
+  {1.92, .06, 20}, {1.92, .06, 20}, {1.92, .06, 20},
+  {1.99, .07, 15}, {1.99, .07, 15}, {1.99, .07, 15},  // 15C range
+  {1.99, .07, 15}, {1.99, .07, 15}, {1.99, .07, 15},
+  {1.99, .07, 15},
+  {2.05, .06, 10}, {2.05, .06, 10}, {2.05, .06, 10},  // 10C range
+  {2.05, .06, 10}, {2.05, .06, 10}, {2.05, .06, 10},
+  {2.11, .06, 5}, {2.11, .06, 5}, {2.11, .06, 5},  // 5C range
+  {2.11, .06, 5}, {2.11, .06, 5}, {2.11, .06, 5},
+  {2.17, .06, 0}, {2.17, .06, 0}, {2.17, .06, 0},  // 0C range
+  {2.17, .06, 0}, {2.17, .06, 0}, {2.17, .06, 0}
+};
 
 /*
  * SPI TX and RX buffers.
@@ -25,10 +63,12 @@ static uint8_t rxbuf[2];
 /*
  * SPI bus thread
  */
+// static THD_WORKING_AREA(spi_thread_2_wa, 256);
 static THD_WORKING_AREA(spi_thread_2_wa, 256);
 static THD_FUNCTION(spi_thread_2, arg) {
   chRegSetThreadName("SPI thread 2");
 
+  // Setup SPI comm
   // command format
   // 0b00110000=<null><null><start><single-ended><d2><d1><d0><null>
 
@@ -41,6 +81,43 @@ static THD_FUNCTION(spi_thread_2, arg) {
 
   uint8_t txbuf[1];  // empty buff for commands to external ADC chips
   uint8_t cell_module_readings[kNumAdcChannels];
+
+  // Setup lookup table for voltage->temperature conversion
+  // Lookup table to first find which linearly interpolable temperature range
+  // a given voltage falls in
+
+  // TODO: Make lookup table a const
+  // should be able to convert all to unsigned 8b integers
+  // constexpr float voltage_to_temp[kNumLookupEntries][kNumLookupEntryItems] = {
+  // std::vector<std::vector<float>> voltage_to_temp {
+  //   {1.48, .03, 65}, {1.48, .03, 65}, {1.48, .03, 65},  // 65C range
+  //   {1.51, .04, 60}, {1.51, .04, 60}, {1.51, .04, 60},  // 60C range
+  //   {1.51, .04, 60},
+  //   {1.55, .04, 55}, {1.55, .04, 55}, {1.55, .04, 55},  // 55C range
+  //   {1.55, .04, 55},
+  //   {1.59, .04, 50}, {1.59, .04, 50}, {1.59, .04, 50},  // 50C range
+  //   {1.59, .04, 50},
+  //   {1.63, .04, 45}, {1.63, .04, 45}, {1.63, .04, 45},  // 45C range
+  //   {1.63, .04, 45},
+  //   {1.68, .05, 40}, {1.68, .05, 40}, {1.68, .05, 40},  // 40C range
+  //   {1.68, .05, 40},
+  //   {1.74, .06, 35}, {1.74, .06, 35}, {1.74, .06, 35},  // 35C range
+  //   {1.74, .06, 35},
+  //   {1.80, .06, 30}, {1.80, .06, 30}, {1.80, .06, 30},  // 30C range
+  //   {1.80, .06, 30},
+  //   {1.86, .06, 25}, {1.86, .06, 25}, {1.86, .06, 25},  // 25C range
+  //   {1.86, .06, 25},
+  //   {1.92, .06, 20}, {1.92, .06, 20}, {1.92, .06, 20},  // 20C range
+  //   {1.92, .06, 20},
+  //   {1.99, .07, 15}, {1.99, .07, 15}, {1.99, .07, 15},  // 15C range
+  //   {1.99, .07, 15},
+  //   {2.05, .06, 10}, {2.05, .06, 10}, {2.05, .06, 10},  // 10C range
+  //   {2.05, .06, 10},
+  //   {2.11, .06, 5}, {2.11, .06, 5}, {2.11, .06, 5},  // 5C range
+  //   {2.11, .06, 5},
+  //   {2.17, .06, 0}, {2.17, .06, 0}, {2.17, .06, 0},  // 0C range
+  //   {2.17, .06, 0}
+  // };
 
   while (true) {
     // TODO: Make an iterator for the SpiBus based on subsets of slaves
@@ -65,6 +142,7 @@ static THD_FUNCTION(spi_thread_2, arg) {
         spiBus->recv(2, rxbuf);
 
         // temporarily just dropping the lower 2 bits to pack into single byte
+        // cell_module_readings[channel_index] = adc_to_temp(rxbuf, voltage_to_temp);
         cell_module_readings[channel_index] = adc_to_temp(rxbuf);
 
         // release for next chip, channel
@@ -200,30 +278,40 @@ int main() {
       // canBus.printRxAll();
     }
 
-    chThdSleepMilliseconds(50);
+    chThdSleepMilliseconds(10000);
   }
 }
 
 // module utility functions
 // @brief Convert bytes in RX buffer from ADC reading to temperature
 // @return temp Temperature in degrees C, resolution of .25
-uint8_t adc_to_temp(uint8_t* rxbuf) {
+// uint8_t adc_to_temp(uint8_t * rxbuf, std::vector<std::vector<float>> &voltage_to_temp) {
+uint8_t adc_to_temp(uint8_t * rxbuf) {
   static uint16_t raw{};
-  static int norm{};
+  // static float norm{};
+  static float voltage{};
+  static int lookup_index{};
+  static float * interpolation_segment{};
+  static float interpolated_subtraction{};
+  static float temp{}, compressed_temp{};
 
   // voltage at max supported temperature (63.75C)
-  static constexpr float kMaxTempVoltage = 1.4875;
-  static constexpr float kMinTempVoltage = 2.17;
-  static constexpr float kVRef = 3.316;
+  // static constexpr float kMaxTempVoltage = 1.4875;
+  // static constexpr float kMinTempVoltage = 2.17;
+  static constexpr float kVref = 3.316;
   static constexpr float kAdcMax = 1023.0;
+  // index constants for lookup table
+  constexpr uint8_t kSegmentStartIndex = 0,
+                    kSegmentLengthIndex = 1,
+                    kBaseTempIndex = 2;
 
   // true resolution of ~ 211.5 values across 0-63.75C
-  static constexpr float kMaxTempValue =
-      (kMaxTempVoltage / kVRef) * kAdcMax;  // ~ 461.125
-  static constexpr float kMinTempValue =
-      (kMinTempVoltage / kVRef) * kAdcMax;  // ~ 672.7
-  static constexpr float kMaxIntegerValue =
-      kMinTempValue - kMaxTempValue;  // ~ 211.575
+  // static constexpr float kMaxTempValue =
+  //     (kMaxTempVoltage / kVref) * kAdcMax;  // ~ 461.125
+  // static constexpr float kMinTempValue =
+  //     (kMinTempVoltage / kVref) * kAdcMax;  // ~ 672.7
+  // static constexpr float kMaxIntegerValue =
+  //     kMinTempValue - kMaxTempValue;  // ~ 211.575
 
   // unpack raw reading to continuous 10 bits
   // A) ((lower 7 of byte 0) << 3) | (lower 3 of byte 1)
@@ -232,18 +320,32 @@ uint8_t adc_to_temp(uint8_t* rxbuf) {
   //
   raw = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
 
-  // normalize to 0=63.75C to 255=0C
-  // (decode to degree C by dividing by 4...bit shifting right by 2)
-  norm = ((raw - kMaxTempValue) / kMaxIntegerValue) * 255;
+  // convert from raw reading to 0-[Vref] voltage
+  voltage = (raw / kAdcMax) * kVref;
+  // return voltage * 100;
+
+  // Convert raw voltage to 0-69 corresponding to 1.48V to 2.17V
+  // with .01V resolution
+  lookup_index = (voltage * 100) - 148;
 
   // TODO: Try std::clamp (-std=c++1z didn't work)
-  // top-out temp at 63.75C and bottom-out at 0C
-  if (norm < 0) {
-    norm = 0;
-  } else if (norm > 255) {
-    norm = 255;
+  if (lookup_index < 0) {
+    lookup_index = 0;
+  } else if (lookup_index > g_kMaxVoltageIndex) {
+    lookup_index = g_kMaxVoltageIndex;
   }
 
-  // normalize to 0=0C 255=63.75C and return
-  return (255 - norm);
+  // interpolation_segment = voltage_to_temp[lookup_index];
+  interpolation_segment = g_voltage_to_temp[lookup_index];
+  // return g_voltage_to_temp[lookup_index][kBaseTempIndex];
+
+  interpolated_subtraction = ((voltage -
+        interpolation_segment[kSegmentStartIndex]) /
+      interpolation_segment[kSegmentLengthIndex]) * 5;
+
+  temp = interpolation_segment[kBaseTempIndex] - interpolated_subtraction;
+
+  compressed_temp = temp * 4;
+
+  return compressed_temp;
 }
