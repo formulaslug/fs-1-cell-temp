@@ -70,7 +70,7 @@ static THD_FUNCTION(spi_thread_2, arg) {
       // queue CAN frame for transmission in thread-safe block
       {
         // Lock from simultaneous thread access
-        std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+        std::lock_guard lock(CAN_BUS_MUT);
         // queue CAN message for one set of 7 cell modules
         (CAN_BUS).queueTxMessage(cellTempMessage);
       }
@@ -90,7 +90,7 @@ static THD_FUNCTION(canTxThreadFunc, arg) {
   while (true) {
     {
       // Lock from simultaneous thread access
-      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      std::lock_guard lock(CAN_BUS_MUT);
       // Process all messages to transmit from the message transmission queue
       (CAN_BUS).processTxMessages();
     }
@@ -114,7 +114,7 @@ static THD_FUNCTION(canRxThreadFunc, arg) {
       continue;
     }
     {
-      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      std::lock_guard lock(CAN_BUS_MUT);
       (CAN_BUS).processRxMessages();
     }
   }
@@ -133,7 +133,7 @@ static THD_FUNCTION(heartbeatThreadFunc, arg) {
     // enqueue heartbeat message to g_canTxQueue
     const HeartbeatMessage heartbeatMessage(kNodeid_cellTemp);
     {
-      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      std::lock_guard lock(CAN_BUS_MUT);
       (CAN_BUS).queueTxMessage(heartbeatMessage);
     }
     // transmit node's (self) heartbeat every 1s
@@ -183,7 +183,7 @@ int main() {
 
   while (1) {
     {
-      std::lock_guard<chibios_rt::Mutex> lock(canBusMut);
+      std::lock_guard lock(canBusMut);
 
       // // print all transmitted messages
       // canBus.printTxAll();
