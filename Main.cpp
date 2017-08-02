@@ -1,7 +1,9 @@
 // Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
 #include <mutex>
 
 #include "CanBus.h"
@@ -9,19 +11,16 @@
 #include "SpiBus.h"
 #include "ch.hpp"
 #include "hal.h"
-#include "thread.h"
 
 // This is very, very temporary
 #define CAN_BUS (*(CanBus*)((*(std::vector<void*>*)arg)[0]))
 #define CAN_BUS_MUT *(chibios_rt::Mutex*)((*(std::vector<void*>*)arg)[1])
 
 // module function prototypes
-uint8_t adc_to_temp(uint8_t* rxbuf);
+uint8_t adcToTemp(uint8_t* rxbuf);
 
 // TODO: remove lookup from global namespace and put in put in thread (?)
-// index constants for lookup table
-static constexpr uint8_t g_kSegmentStartIndex = 0, g_kSegmentLengthIndex = 1,
-                         g_kBaseTempIndex = 2;
+
 static constexpr uint8_t g_kVoltageToTempLength = 70;
 static constexpr uint8_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
 
@@ -30,8 +29,14 @@ static constexpr uint8_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
 // Entries have the form { voltage-bound * 100,
 //                         length-of-voltage-range * 100,
 //                         base-temperature-of-voltage-range }
-// TODO: use vectors
-static uint8_t g_voltage_to_temp[g_kVoltageToTempLength][3] = {
+struct Segment {
+  uint8_t start;
+  uint8_t length;
+  uint8_t baseTemp;
+};
+
+// clang-format off
+static constexpr std::array<Segment, g_kVoltageToTempLength> g_voltageToTemp{{
     {148, 3, 65}, {148, 3, 65}, {148, 3, 65},                // 65C range
     {151, 4, 60}, {151, 4, 60}, {151, 4, 60}, {151, 4, 60},  // 60C range
     {155, 4, 55}, {155, 4, 55}, {155, 4, 55}, {155, 4, 55},  // 55C range
@@ -54,19 +59,14 @@ static uint8_t g_voltage_to_temp[g_kVoltageToTempLength][3] = {
     {211, 6, 5}, {211, 6, 5},  {211, 6, 5}, {211, 6, 5},     // 5C range
     {211, 6, 5},  {211, 6, 5},
     {217, 6, 0}                                              // 0C range
-};
-
-/*
- * SPI TX and RX buffers.
- */
-static uint8_t rxbuf[2];
+}};
+// clang-format on
 
 /*
  * SPI bus thread
  */
-// static THD_WORKING_AREA(spi_thread_2_wa, 256);
-static THD_WORKING_AREA(spi_thread_2_wa, 256);
-static THD_FUNCTION(spi_thread_2, arg) {
+static THD_WORKING_AREA(spiThread2Wa, 256);
+static THD_FUNCTION(spiThread2, arg) {
   chRegSetThreadName("SPI thread 2");
 
   // setup SPI comm...command format is
@@ -77,41 +77,46 @@ static THD_FUNCTION(spi_thread_2, arg) {
   constexpr uint8_t kBaseCommand = 0x30;  // null, null, start, single_ended
   constexpr uint8_t kSsPins[kNumAdcSlaves] = {4, 3, 1, 0};
 
-  SpiBus* spiBus = new SpiBus(SpiBusBaudRate::k140k, kSsPins, kNumAdcSlaves);
+  auto spiBus =
+      std::make_unique<SpiBus>(SpiBusBaudRate::k140k, kSsPins, kNumAdcSlaves);
 
+  /*
+   * SPI TX and RX buffers.
+   */
+  uint8_t rxbuf[2];
   uint8_t txbuf[1];  // empty buff for commands to external ADC chips
-  uint8_t cell_module_readings[kNumAdcChannels];
+  uint8_t cellModuleReadings[kNumAdcChannels];
 
   while (true) {
     // TODO: Make an iterator for the SpiBus based on subsets of slaves
     // Read analog values on 7 of the 8 channels on the 4 ADC chips and dump
     // them on the CAN network as 4 separate frames for each chip (set of 7 cell
     // modules)
-    for (uint8_t chip_index = 0; chip_index < kNumAdcSlaves; ++chip_index) {
+    for (uint8_t chipIndex = 0; chipIndex < kNumAdcSlaves; ++chipIndex) {
       // spiBus->acquireSlave(2); // chip 2 not working
       // for each channel on the current chip
-      for (uint8_t channel_index = 0; channel_index < kNumAdcChannels;
-           ++channel_index) {
+      for (uint8_t channelIndex = 0; channelIndex < kNumAdcChannels;
+           ++channelIndex) {
         // acquire for current chip, current channel
-        spiBus->acquireSlave(chip_index);
+        spiBus->acquireSlave(chipIndex);
 
         // set the channel address in LS nibble (LS bit is null, so << 1)
-        txbuf[0] = kBaseCommand | (channel_index << 1);
+        txbuf[0] = kBaseCommand | (channelIndex << 1);
 
         // send command word then read in data
         spiBus->send(1, txbuf);
         spiBus->recv(2, rxbuf);
 
         // convert SPI bytes to an 8b compressed temperature
-        cell_module_readings[channel_index] = adc_to_temp(rxbuf);
+        cellModuleReadings[channelIndex] = adcToTemp(rxbuf);
 
         // release for next chip, channel
         spiBus->releaseSlave();
       }
 
       // pack 7 module temp readings into CAN frame
-      const CellTempMessage cellTempMessage(kFuncid_cellTemp_adc[chip_index],
-                                            cell_module_readings);
+      const CellTempMessage cellTempMessage(kFuncIdCellTempAdc[chipIndex],
+                                            cellModuleReadings);
 
       // queue CAN frame for transmission in thread-safe block
       {
@@ -131,7 +136,7 @@ static THD_FUNCTION(spi_thread_2, arg) {
 /*
  * CAN TX thread
  */
-static THD_WORKING_AREA(wa_canTxThreadFunc, 128);
+static THD_WORKING_AREA(canTxThreadFuncWa, 128);
 static THD_FUNCTION(canTxThreadFunc, arg) {
   chRegSetThreadName("CAN TX");
 
@@ -150,7 +155,7 @@ static THD_FUNCTION(canTxThreadFunc, arg) {
 /*
  * CAN RX thread
  */
-static THD_WORKING_AREA(wa_canRxThreadFunc, 128);
+static THD_WORKING_AREA(canRxThreadFuncWa, 128);
 static THD_FUNCTION(canRxThreadFunc, arg) {
   event_listener_t el;
 
@@ -173,13 +178,13 @@ static THD_FUNCTION(canRxThreadFunc, arg) {
 /**
  * @desc Performs periodic tasks every second
  */
-static THD_WORKING_AREA(wa_heartbeatThreadFunc, 128);
+static THD_WORKING_AREA(heartbeatThreadFuncWa, 128);
 static THD_FUNCTION(heartbeatThreadFunc, arg) {
   chRegSetThreadName("NODE HEARTBEAT");
 
   while (1) {
     // enqueue heartbeat message to g_canTxQueue
-    const HeartbeatMessage heartbeatMessage(kNodeid_cellTemp);
+    const HeartbeatMessage heartbeatMessage(kNodeIdCellTemp);
     {
       std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
       (CAN_BUS).queueTxMessage(heartbeatMessage);
@@ -202,7 +207,7 @@ int main() {
 
   // INIT INTERFACES
   // Activate CAN driver 1 (PA11 = CANRX, PA12 = CANTX)
-  CanBus canBus(kNodeid_cellTemp, CanBusBaudRate::k250k, false);
+  CanBus canBus(kNodeIdCellTemp, CanBusBaudRate::k250k, false);
   chibios_rt::Mutex canBusMut;
   chibios_rt::Mutex spiBusMut;
 
@@ -210,16 +215,16 @@ int main() {
   std::vector<void*> args = {&canBus, &canBusMut};
 
   // start the CAN TX/RX threads
-  chThdCreateStatic(wa_canTxThreadFunc, sizeof(wa_canTxThreadFunc), NORMALPRIO,
+  chThdCreateStatic(canTxThreadFuncWa, sizeof(canTxThreadFuncWa), NORMALPRIO,
                     canTxThreadFunc, &args);
-  chThdCreateStatic(wa_canRxThreadFunc, sizeof(wa_canRxThreadFunc), NORMALPRIO,
+  chThdCreateStatic(canRxThreadFuncWa, sizeof(canRxThreadFuncWa), NORMALPRIO,
                     canRxThreadFunc, &args);
   // start the CAN heartbeat thread
-  chThdCreateStatic(wa_heartbeatThreadFunc, sizeof(wa_heartbeatThreadFunc),
+  chThdCreateStatic(heartbeatThreadFuncWa, sizeof(heartbeatThreadFuncWa),
                     NORMALPRIO, heartbeatThreadFunc, &args);
   // Start SPI thread
-  chThdCreateStatic(spi_thread_2_wa, sizeof(spi_thread_2_wa), NORMALPRIO + 1,
-                    spi_thread_2, &args);
+  chThdCreateStatic(spiThread2Wa, sizeof(spiThread2Wa), NORMALPRIO + 1,
+                    spiThread2, &args);
 
   // Successful startup indicator
   for (int i = 0; i < 4; ++i) {
@@ -230,31 +235,15 @@ int main() {
   }
 
   while (1) {
-    {
-      std::lock_guard<chibios_rt::Mutex> lock(canBusMut);
-
-      // // print all transmitted messages
-      // canBus.printTxAll();
-      // // print all received messages
-      // canBus.printRxAll();
-    }
-
-    chThdSleepMilliseconds(10000);
+    // Sleep 24 hours
+    chThdSleepMilliseconds(1000 * 60 * 60 * 24);
   }
 }
 
 // @brief Convert bytes in RX buffer from ADC reading to temperature
 // @return temp Temperature in degrees C, resolution of .25
 // TODO: Add in per-channel moving average
-uint8_t adc_to_temp(uint8_t* rxbuf) {
-  static uint16_t raw{};
-  static double voltage{};
-  static int lookup_index{};
-  static uint8_t* interpolation_segment{};
-  static float interpolated_base_offset{};
-  static uint16_t temp{};
-  static uint8_t compressed_temp{};
-
+uint8_t adcToTemp(uint8_t* rxbuf) {
   // voltage at max supported temperature (63.75C)
   static constexpr float kVref = 3.315;
   static constexpr double kAdcMax = 1023.0;
@@ -263,39 +252,30 @@ uint8_t adc_to_temp(uint8_t* rxbuf) {
   // Pack bits from SPI bytes into single 10b ADC reading:
   // (upper 7 bits of the first byte, in the upper 7 position) |
   //    (upper 3 bits of the second byte, in the lower 3 position)
-  raw = ((rxbuf[0] & 0x7f) << 3) | ((rxbuf[1] & 0xe0) >> 5);
+  uint16_t raw = ((rxbuf[0] & 0x7f) << 3) | ((rxbuf[1] & 0xe0) >> 5);
 
   // convert raw reading to voltage based on ADC resolution and Vref
-  voltage = (raw / kAdcMax) * kVref;
+  double voltage = (raw / kAdcMax) * kVref;
 
   // Convert fp voltage to integer (with 0.01V resolution), then normalize to
   // 0=148 (1.48V) and 69=217 (2.17V)
-  lookup_index = (voltage * 100) - 148;
+  int lookupIndex = voltage * 100 - 148;
 
   // clamp index between 0 and 69
-  // TODO: Try std::clamp (-std=c++1z didn't work)
-  if (lookup_index < 0) {
-    lookup_index = 0;
-  } else if (lookup_index > g_kMaxVoltageIndex) {
-    lookup_index = g_kMaxVoltageIndex;
-  }
+  lookupIndex = std::clamp<uint16_t>(lookupIndex, 0, g_kMaxVoltageIndex);
 
   // fetch linearly interpolable range (e.g. 0-5 degrees C)
-  interpolation_segment = g_voltage_to_temp[lookup_index];
+  auto& interpolationSegment = g_voltageToTemp[lookupIndex];
 
   // compute temperature offset from upper bound of range
-  interpolated_base_offset =
-      5 * (((voltage * 100) - interpolation_segment[g_kSegmentStartIndex]) /
-           (interpolation_segment[g_kSegmentLengthIndex]));
+  float interpolatedBaseOffset = 5 *
+                                 (voltage * 100 - interpolationSegment.start) /
+                                 interpolationSegment.length;
 
   // compute fp temperature from base and base offset
-  temp =
-      4 * (interpolation_segment[g_kBaseTempIndex] - interpolated_base_offset);
+  uint16_t temp = 4 * (interpolationSegment.baseTemp - interpolatedBaseOffset);
 
   // convert to uint8 with resolution of 0.25 degrees C
   // clamp to max temp that can be represented by single uint8
-  compressed_temp = temp > kMaxTemp ? kMaxTemp : temp;
-
-  // divide this returned integer temp by 4 to get fp temp
-  return compressed_temp;
+  return std::min<uint16_t>(temp, kMaxTemp);
 }

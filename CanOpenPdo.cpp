@@ -4,15 +4,15 @@
 
 #include <cstring>
 
-CellTempMessage::CellTempMessage(uint32_t adc_chip_id,
-                                 uint8_t cell_module_readings[7]) {
+CellTempMessage::CellTempMessage(uint32_t adcChipId,
+                                 uint8_t cellModuleReadings[7]) {
   IDE = CAN_IDE_EXT;
-  EID = kSysid_fs | kNodeid_cellTemp | adc_chip_id;
+  EID = kSysIdFs | kNodeIdCellTemp | adcChipId;
   RTR = CAN_RTR_DATA;
   DLC = 7;  // num data bytes in frame
 
   // copy passed data into frame's data bytes
-  std::memcpy(data8, cell_module_readings, 7 * sizeof(uint8_t));
+  std::memcpy(data8, cellModuleReadings, 7 * sizeof(uint8_t));
 }
 
 HeartbeatMessage::HeartbeatMessage(uint32_t id) {
@@ -27,7 +27,7 @@ HeartbeatMessage::HeartbeatMessage(uint32_t id) {
 
 ThrottleMessage::ThrottleMessage(uint16_t throttleVoltage, bool forwardSwitch) {
   IDE = CAN_IDE_EXT;
-  EID = kCobid_TPDO5;
+  EID = kCobIdTPDO5;
   RTR = CAN_RTR_DATA;
   DLC = 8;
 

@@ -21,18 +21,18 @@
 //     5 = ADC Chip 4 Reading
 // Universal Function IDs:
 //   1 = Heartbeat
-constexpr uint32_t kSysid_fs = 0x600;
-constexpr uint32_t kNodeid_primary = 0x010;
-constexpr uint32_t kNodeid_secondary = 0x020;
-constexpr uint32_t kNodeid_cellTemp = 0x030;
-constexpr uint32_t kFuncid_cellTemp_adc[4] = {0x002, 0x003, 0x004, 0x005};
+constexpr uint32_t kSysIdFs = 0x600;
+constexpr uint32_t kNodeIdPrimary = 0x010;
+constexpr uint32_t kNodeIdSecondary = 0x020;
+constexpr uint32_t kNodeIdCellTemp = 0x030;
+constexpr uint32_t kFuncIdCellTempAdc[4] = {0x002, 0x003, 0x004, 0x005};
 
-constexpr uint32_t kCobid_TPDO5 = 0x241;  // including throttle voltage payload
-constexpr uint32_t kCobid_node3Heartbeat = 0x611;  // changed from 0x003
-constexpr uint32_t kCobid_node4Heartbeat = 0x621;  // changed from 0x004
-constexpr uint32_t kCobid_cellTempHeartbeat = 0x631;
-constexpr uint32_t kCobid_p2s = 0x613;  // changed from 0x013
-constexpr uint32_t kCobid_s2p = 0x622;  // changed from 0x014
+constexpr uint32_t kCobIdTPDO5 = 0x241;  // including throttle voltage payload
+constexpr uint32_t kCobIdNode3Heartbeat = 0x611;  // changed from 0x003
+constexpr uint32_t kCobIdNode4Heartbeat = 0x621;  // changed from 0x004
+constexpr uint32_t kCobIdCellTempHeartbeat = 0x631;
+constexpr uint32_t kCobIdP2s = 0x613;  // changed from 0x013
+constexpr uint32_t kCobIdS2p = 0x622;  // changed from 0x014
 
 // Payload constants
 constexpr uint32_t kPayloadHeartbeat = 0x1;
@@ -42,7 +42,7 @@ struct HeartbeatMessage : public CANTxFrame {
 };
 
 struct CellTempMessage : public CANTxFrame {
-  CellTempMessage(uint32_t adc_chip_id, uint8_t cell_module_readings[7]);
+  CellTempMessage(uint32_t adcChipId, uint8_t cellModuleReadings[7]);
 };
 
 struct ThrottleMessage : public CANTxFrame {
