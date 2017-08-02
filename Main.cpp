@@ -1,6 +1,7 @@
 // Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
 #include <array>
+#include <cmath>
 #include <mutex>
 
 #include "CanBus.h"
@@ -15,47 +16,44 @@
 #define CAN_BUS_MUT *(chibios_rt::Mutex*)((*(std::vector<void*>*)arg)[1])
 
 // module function prototypes
-uint8_t adc_to_temp(uint8_t * rxbuf);
+uint8_t adc_to_temp(uint8_t* rxbuf);
 
 // TODO: remove lookup from global namespace and put in put in thread (?)
 // index constants for lookup table
-static constexpr uint8_t g_kSegmentStartIndex = 0,
-                         g_kSegmentLengthIndex = 1,
+static constexpr uint8_t g_kSegmentStartIndex = 0, g_kSegmentLengthIndex = 1,
                          g_kBaseTempIndex = 2;
 static constexpr uint8_t g_kVoltageToTempLength = 70;
 static constexpr uint8_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
 
 // Lookup table for voltage->temperature conversion. Used to find which linearly
-// interpolable temperature range a given voltage falls in
+// interpolable temperature range a given voltage falls in.
+// Entries have the form { voltage-bound * 100,
+//                         length-of-voltage-range * 100,
+//                         base-temperature-of-voltage-range }
 // TODO: use vectors
-static float g_voltage_to_temp[g_kVoltageToTempLength][3] = {
-  {1.48, .03, 65}, {1.48, .03, 65}, {1.48, .03, 65},  // 65C range
-  {1.51, .04, 60}, {1.51, .04, 60}, {1.51, .04, 60},  // 60C range
-  {1.51, .04, 60},
-  {1.55, .04, 55}, {1.55, .04, 55}, {1.55, .04, 55},  // 55C range
-  {1.55, .04, 55},
-  {1.59, .04, 50}, {1.59, .04, 50}, {1.59, .04, 50},  // 50C range
-  {1.59, .04, 50},
-  {1.63, .05, 45}, {1.63, .05, 45}, {1.63, .05, 45},  // 45C range
-  {1.63, .05, 45}, {1.63, .05, 45},
-  {1.68, .06, 40}, {1.68, .06, 40}, {1.68, .06, 40},  // 40C range
-  {1.68, .06, 40}, {1.68, .06, 40}, {1.68, .06, 40},
-  {1.74, .06, 35}, {1.74, .06, 35}, {1.74, .06, 35},  // 35C range
-  {1.74, .06, 35}, {1.74, .06, 35}, {1.74, .06, 35},
-  {1.80, .06, 30}, {1.80, .06, 30}, {1.80, .06, 30},  // 30C range
-  {1.80, .06, 30}, {1.80, .06, 30}, {1.80, .06, 30},
-  {1.86, .06, 25}, {1.86, .06, 25}, {1.86, .06, 25},  // 25C range
-  {1.86, .06, 25}, {1.86, .06, 25}, {1.86, .06, 25},
-  {1.92, .06, 20}, {1.92, .06, 20}, {1.92, .06, 20},  // 20C range
-  {1.92, .06, 20}, {1.92, .06, 20}, {1.92, .06, 20},
-  {1.92, .06, 20},
-  {1.99, .06, 15}, {1.99, .06, 15}, {1.99, .06, 15},  // 15C range
-  {1.99, .06, 15}, {1.99, .06, 15}, {1.99, .06, 15},
-  {2.05, .06, 10}, {2.05, .06, 10}, {2.05, .06, 10},  // 10C range
-  {2.05, .06, 10}, {2.05, .06, 10}, {2.05, .06, 10},
-  {2.11, .06, 5 }, {2.11, .06, 5 }, {2.11, .06, 5 },  // 5C range
-  {2.11, .06, 5 }, {2.11, .06, 5 }, {2.11, .06, 5 },
-  {2.17, .06, 0 }                                     // 0C range
+static uint8_t g_voltage_to_temp[g_kVoltageToTempLength][3] = {
+    {148, 3, 65}, {148, 3, 65}, {148, 3, 65},                // 65C range
+    {151, 4, 60}, {151, 4, 60}, {151, 4, 60}, {151, 4, 60},  // 60C range
+    {155, 4, 55}, {155, 4, 55}, {155, 4, 55}, {155, 4, 55},  // 55C range
+    {159, 4, 50}, {159, 4, 50}, {159, 4, 50}, {159, 4, 50},  // 50C range
+    {163, 5, 45}, {163, 5, 45}, {163, 5, 45}, {163, 5, 45},  // 45C range
+    {163, 5, 45}, {168, 6, 40}, {168, 6, 40}, {168, 6, 40},  // 40C range
+    {168, 6, 40}, {168, 6, 40}, {168, 6, 40},
+    {174, 6, 35}, {174, 6, 35}, {174, 6, 35}, {174, 6, 35},  // 35C range
+    {174, 6, 35}, {174, 6, 35},
+    {180, 6, 30}, {180, 6, 30}, {180, 6, 30}, {180, 6, 30},  // 30C range
+    {180, 6, 30}, {180, 6, 30},
+    {186, 6, 25}, {186, 6, 25}, {186, 6, 25}, {186, 6, 25},  // 25C range
+    {186, 6, 25}, {186, 6, 25},
+    {192, 6, 20}, {192, 6, 20}, {192, 6, 20}, {192, 6, 20},  // 20C range
+    {192, 6, 20}, {192, 6, 20}, {192, 6, 20},
+    {199, 6, 15}, {199, 6, 15}, {199, 6, 15}, {199, 6, 15},  // 15C range
+    {199, 6, 15}, {199, 6, 15},
+    {205, 6, 10}, {205, 6, 10}, {205, 6, 10}, {205, 6, 10},  // 10C range
+    {205, 6, 10}, {205, 6, 10},
+    {211, 6, 5}, {211, 6, 5},  {211, 6, 5}, {211, 6, 5},     // 5C range
+    {211, 6, 5},  {211, 6, 5},
+    {217, 6, 0}                                              // 0C range
 };
 
 /*
@@ -71,8 +69,7 @@ static THD_WORKING_AREA(spi_thread_2_wa, 256);
 static THD_FUNCTION(spi_thread_2, arg) {
   chRegSetThreadName("SPI thread 2");
 
-  // Setup SPI comm
-  // command format
+  // setup SPI comm...command format is
   // 0b00110000=<null><null><start><single-ended><d2><d1><d0><null>
 
   constexpr uint8_t kNumAdcSlaves = 4;
@@ -91,12 +88,10 @@ static THD_FUNCTION(spi_thread_2, arg) {
     // them on the CAN network as 4 separate frames for each chip (set of 7 cell
     // modules)
     for (uint8_t chip_index = 0; chip_index < kNumAdcSlaves; ++chip_index) {
-
       // spiBus->acquireSlave(2); // chip 2 not working
       // for each channel on the current chip
       for (uint8_t channel_index = 0; channel_index < kNumAdcChannels;
            ++channel_index) {
-
         // acquire for current chip, current channel
         spiBus->acquireSlave(chip_index);
 
@@ -107,8 +102,7 @@ static THD_FUNCTION(spi_thread_2, arg) {
         spiBus->send(1, txbuf);
         spiBus->recv(2, rxbuf);
 
-        // temporarily just dropping the lower 2 bits to pack into single byte
-        // cell_module_readings[channel_index] = adc_to_temp(rxbuf, voltage_to_temp);
+        // convert SPI bytes to an 8b compressed temperature
         cell_module_readings[channel_index] = adc_to_temp(rxbuf);
 
         // release for next chip, channel
@@ -130,7 +124,7 @@ static THD_FUNCTION(spi_thread_2, arg) {
     }
 
     // throttle back thread runloop to prevent overconsumption of resources
-    chThdSleepMilliseconds(50);
+    chThdSleepMilliseconds(200);
   }
 }
 
@@ -149,7 +143,7 @@ static THD_FUNCTION(canTxThreadFunc, arg) {
       (CAN_BUS).processTxMessages();
     }
     // throttle back thread runloop to prevent overconsumption of resources
-    chThdSleepMilliseconds(50);
+    chThdSleepMilliseconds(10);
   }
 }
 
@@ -249,28 +243,27 @@ int main() {
   }
 }
 
-// module utility functions
 // @brief Convert bytes in RX buffer from ADC reading to temperature
 // @return temp Temperature in degrees C, resolution of .25
-uint8_t adc_to_temp(uint8_t * rxbuf) {
+// TODO: Add in per-channel moving average
+uint8_t adc_to_temp(uint8_t* rxbuf) {
   static uint16_t raw{};
-  static float voltage{};
+  static double voltage{};
   static int lookup_index{};
-  static float * interpolation_segment{};
-  static float interpolated_base_offset{}, temp{};
+  static uint8_t* interpolation_segment{};
+  static float interpolated_base_offset{};
+  static uint16_t temp{};
   static uint8_t compressed_temp{};
 
   // voltage at max supported temperature (63.75C)
-  static constexpr float kVref = 3.316;
-  static constexpr float kAdcMax = 1023.0;
-  static constexpr float kMaxTemp = 255 / 4.0; // max of 63.75C
+  static constexpr float kVref = 3.315;
+  static constexpr double kAdcMax = 1023.0;
+  static constexpr uint8_t kMaxTemp = 255;  // max of 63.75C
 
-  // unpack raw reading to continuous 10 bits
-  // A) ((lower 7 of byte 0) << 3) | (lower 3 of byte 1)
-  // B) (upper 7 bits of the reading, in the upper 7 position) |
-  //      (lower 3 bits of the second byte, in the lower 3 position)
-  //
-  raw = ((rxbuf[0] & 0x7f) << 3) | (rxbuf[1] & 0x7);
+  // Pack bits from SPI bytes into single 10b ADC reading:
+  // (upper 7 bits of the first byte, in the upper 7 position) |
+  //    (upper 3 bits of the second byte, in the lower 3 position)
+  raw = ((rxbuf[0] & 0x7f) << 3) | ((rxbuf[1] & 0xe0) >> 5);
 
   // convert raw reading to voltage based on ADC resolution and Vref
   voltage = (raw / kAdcMax) * kVref;
@@ -291,17 +284,17 @@ uint8_t adc_to_temp(uint8_t * rxbuf) {
   interpolation_segment = g_voltage_to_temp[lookup_index];
 
   // compute temperature offset from upper bound of range
-  interpolated_base_offset = 5 * (
-        (voltage - interpolation_segment[g_kSegmentStartIndex]) /
-        (interpolation_segment[g_kSegmentLengthIndex])
-      );
+  interpolated_base_offset =
+      5 * (((voltage * 100) - interpolation_segment[g_kSegmentStartIndex]) /
+           (interpolation_segment[g_kSegmentLengthIndex]));
 
   // compute fp temperature from base and base offset
-  temp = interpolation_segment[g_kBaseTempIndex] - interpolated_base_offset;
+  temp =
+      4 * (interpolation_segment[g_kBaseTempIndex] - interpolated_base_offset);
 
   // convert to uint8 with resolution of 0.25 degrees C
   // clamp to max temp that can be represented by single uint8
-  compressed_temp = temp > kMaxTemp ? kMaxTemp * 4 : temp * 4;
+  compressed_temp = temp > kMaxTemp ? kMaxTemp : temp;
 
   // divide this returned integer temp by 4 to get fp temp
   return compressed_temp;
