@@ -19,8 +19,6 @@
 // module function prototypes
 uint8_t adcToTemp(uint8_t* rxbuf);
 
-// TODO: remove lookup from global namespace and put in put in thread (?)
-
 static constexpr uint8_t g_kVoltageToTempLength = 70;
 static constexpr uint8_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
 
@@ -69,7 +67,7 @@ static THD_WORKING_AREA(spiThread2Wa, 256);
 static THD_FUNCTION(spiThread2, arg) {
   chRegSetThreadName("SPI thread 2");
 
-  // setup SPI comm...command format is
+  // Setup SPI comm. Command format is:
   // 0b00110000=<null><null><start><single-ended><d2><d1><d0><null>
 
   constexpr uint8_t kNumAdcSlaves = 4;
@@ -259,6 +257,8 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
 
   // Convert fp voltage to integer (with 0.01V resolution), then normalize to
   // 0=148 (1.48V) and 69=217 (2.17V)
+  // Voltages below 0C (> 2.17V) are unlikely and irrelevant to fault detection.
+  // Voltages above 63.75C (< 1.48V) are implausible due to system fault @ 55C.
   int lookupIndex = voltage * 100 - 148;
 
   // clamp index between 0 and 69
@@ -267,6 +267,7 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   // fetch linearly interpolable range (e.g. 0-5 degrees C)
   auto& interpolationSegment = g_voltageToTemp[lookupIndex];
 
+  // TODO: change to uint8_t (need to test effect on temp resolution)
   // compute temperature offset from upper bound of range
   float interpolatedBaseOffset = 5 *
                                  (voltage * 100 - interpolationSegment.start) /
