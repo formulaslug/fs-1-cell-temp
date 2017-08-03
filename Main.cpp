@@ -246,7 +246,7 @@ int main() {
 uint8_t adcToTemp(uint8_t* rxbuf) {
   // voltage at max supported temperature (63.75C)
   static constexpr float kVref = 3.315;
-  static constexpr double kAdcMax = 1023.0;
+  static constexpr float kAdcMax = 1023.0;
   static constexpr uint8_t kMaxTemp = 255;  // max of 63.75C
 
   // Pack bits from SPI bytes into single 10b ADC reading:
@@ -255,7 +255,7 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   uint16_t raw = ((rxbuf[0] & 0x7f) << 3) | ((rxbuf[1] & 0xe0) >> 5);
 
   // convert raw reading to voltage based on ADC resolution and Vref
-  double voltage = (raw / kAdcMax) * kVref;
+  float voltage = (raw / kAdcMax) * kVref;
 
   // Convert fp voltage to integer (with 0.01V resolution), then normalize to
   // 0=148 (1.48V) and 69=217 (2.17V)
