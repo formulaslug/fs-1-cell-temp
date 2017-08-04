@@ -246,6 +246,7 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   static constexpr float kVref = 3.315;
   static constexpr float kAdcMax = 1023.0;
   static constexpr uint8_t kMaxTemp = 255;  // max of 63.75C
+  static constexpr uint8_t kCompressionScalar = 4;
 
   // Pack bits from SPI bytes into single 10b ADC reading:
   // (upper 7 bits of the first byte, in the upper 7 position) |
@@ -268,13 +269,17 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   auto& interpolationSegment = g_voltageToTemp[lookupIndex];
 
   // TODO: change to uint8_t (need to test effect on temp resolution)
-  // compute temperature offset from upper bound of range
+  // Compute temperature offset from upper bound of the respective 5 degree,
+  // linearly interpolable range
   float interpolatedBaseOffset = 5 *
                                  (voltage * 100 - interpolationSegment.start) /
                                  interpolationSegment.length;
 
-  // compute fp temperature from base and base offset
-  uint16_t temp = 4 * (interpolationSegment.baseTemp - interpolatedBaseOffset);
+  // Compute 8b compressed temperature from base and base offset
+  // Interpolated value is multiplied by 4 to scale from 0-63.75 to 0-255
+  // (while maintaining a .25C resolution w.r.t. the fp equivalent)
+  uint16_t temp = kCompressionScalar *
+                  (interpolationSegment.baseTemp - interpolatedBaseOffset);
 
   // convert to uint8 with resolution of 0.25 degrees C
   // clamp to max temp that can be represented by single uint8
