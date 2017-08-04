@@ -260,10 +260,10 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   // 0=148 (1.48V) and 69=217 (2.17V)
   // Voltages below 0C (> 2.17V) are unlikely and irrelevant to fault detection.
   // Voltages above 63.75C (< 1.48V) are implausible due to system fault @ 55C.
-  int lookupIndex = voltage * 100 - 148;
+  int32_t lookupIndex = voltage * 100 - 148;
 
   // clamp index between 0 and 69
-  lookupIndex = std::clamp<uint16_t>(lookupIndex, 0, g_kMaxVoltageIndex);
+  lookupIndex = std::clamp<int32_t>(lookupIndex, 0, g_kMaxVoltageIndex);
 
   // fetch linearly interpolable range (e.g. 0-5 degrees C)
   auto& interpolationSegment = g_voltageToTemp[lookupIndex];
