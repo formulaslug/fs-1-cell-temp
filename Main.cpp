@@ -142,7 +142,12 @@ static THD_FUNCTION(spiThread2, arg) {
     }
 
     // check for fault status of BMS and IMD digital inputs
-    // ...
+    if (!bmsDidFault && palReadLine(LINE_ARD_D4) == PAL_HIGH) {
+      bmsDidFault = true;
+    }
+    if (!imdDidFault && palReadLine(LINE_ARD_D5) == PAL_HIGH) {
+      imdDidFault = true;
+    }
 
     // output a fault packet containing fault states of temp, BMS, and IMD
     // ...
@@ -231,8 +236,10 @@ int main() {
   chibios_rt::Mutex spiBusMut;
 
   // fault signal I/O pins
-  palSetLineMode(LINE_ARD_D3, PAL_MODE_OUTPUT_PUSHPULL);  // mode
-  palWriteLine(LINE_ARD_D3, PAL_LOW);  // init value
+  palSetLineMode(LINE_ARD_D3, PAL_MODE_OUTPUT_PUSHPULL);  // temp mode
+  palWriteLine(LINE_ARD_D3, PAL_LOW);  // init temp fault value
+  palSetLineMode(LINE_ARD_D4, PAL_MODE_INPUT);  // BMS mode
+  palSetLineMode(LINE_ARD_D5, PAL_MODE_INPUT);  // IMD mode
 
   // create void* compatible obj
   std::vector<void*> args = {&canBus, &canBusMut};
