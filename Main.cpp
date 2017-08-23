@@ -89,7 +89,7 @@ static THD_FUNCTION(spiThread2, arg) {
   uint8_t cellModuleReadings[kNumAdcChannels];
 
   // fault vars
-  uint8_t cellTempDidFault = false;
+  uint8_t tempDidFault = false;
   uint8_t bmsDidFault = false;
   uint8_t imdDidFault = false;
 
@@ -117,10 +117,10 @@ static THD_FUNCTION(spiThread2, arg) {
         cellModuleReadings[channelIndex] = adcToTemp(rxbuf);
 
         // set cell temp fault high if threshold was crossed
-        if (!cellTempDidFault
+        if (!tempDidFault
             && cellModuleReadings[channelIndex] > faultTempValue) {
-          palWriteLine(LINE_ARD_D3, PAL_HIGH);  // init value
-          cellTempDidFault = true;
+          palWriteLine(LINE_ARD_D3, PAL_LOW);  // init value
+          tempDidFault = true;
         }
 
         // release for next chip, channel
@@ -142,15 +142,26 @@ static THD_FUNCTION(spiThread2, arg) {
     }
 
     // check for fault status of BMS and IMD digital inputs
-    if (!bmsDidFault && palReadLine(LINE_ARD_D4) == PAL_HIGH) {
+    if (!bmsDidFault && palReadLine(LINE_ARD_D7) == PAL_LOW) {
       bmsDidFault = true;
     }
-    if (!imdDidFault && palReadLine(LINE_ARD_D5) == PAL_HIGH) {
+    if (!imdDidFault && palReadLine(LINE_ARD_D8) == PAL_LOW) {
       imdDidFault = true;
     }
 
     // output a fault packet containing fault states of temp, BMS, and IMD
-    // ...
+    const FaultStatusesMessage faultStatusesMessage(tempDidFault,
+                                                    bmsDidFault,
+                                                    imdDidFault);
+
+    // queue CAN frame for transmission in thread-safe block
+    {
+      // Lock from simultaneous thread access
+      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+
+      // queue CAN message for one set of 7 cell modules
+      (CAN_BUS).queueTxMessage(faultStatusesMessage);
+    }
 
     // throttle back thread runloop to prevent overconsumption of resources
     chThdSleepMilliseconds(200);
@@ -237,9 +248,9 @@ int main() {
 
   // fault signal I/O pins
   palSetLineMode(LINE_ARD_D3, PAL_MODE_OUTPUT_PUSHPULL);  // temp mode
-  palWriteLine(LINE_ARD_D3, PAL_LOW);  // init temp fault value
-  palSetLineMode(LINE_ARD_D4, PAL_MODE_INPUT);  // BMS mode
-  palSetLineMode(LINE_ARD_D5, PAL_MODE_INPUT);  // IMD mode
+  palWriteLine(LINE_ARD_D3, PAL_HIGH);  // init temp fault value (no fault)
+  palSetLineMode(LINE_ARD_D7, PAL_MODE_INPUT);  // BMS mode
+  palSetLineMode(LINE_ARD_D8, PAL_MODE_INPUT);  // IMD mode
 
   // create void* compatible obj
   std::vector<void*> args = {&canBus, &canBusMut};
