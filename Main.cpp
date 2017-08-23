@@ -21,6 +21,7 @@ uint8_t adcToTemp(uint8_t* rxbuf);
 
 static constexpr uint8_t g_kVoltageToTempLength = 70;
 static constexpr uint8_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
+static constexpr uint8_t g_kTempCompressionScalar = 4;
 
 // Lookup table for voltage->temperature conversion. Used to find which linearly
 // interpolable temperature range a given voltage falls in.
@@ -74,6 +75,8 @@ static THD_FUNCTION(spiThread2, arg) {
   constexpr uint8_t kNumAdcChannels = 7;  // ignoring 8th channel on all chips
   constexpr uint8_t kBaseCommand = 0x30;  // null, null, start, single_ended
   constexpr uint8_t kSsPins[kNumAdcSlaves] = {4, 3, 1, 0};
+  constexpr uint8_t faultTemp = 55;  // degree C
+  constexpr uint8_t faultTempValue = faultTemp * g_kTempCompressionScalar;
 
   auto spiBus =
       std::make_unique<SpiBus>(SpiBusBaudRate::k140k, kSsPins, kNumAdcSlaves);
@@ -84,6 +87,11 @@ static THD_FUNCTION(spiThread2, arg) {
   uint8_t rxbuf[2];
   uint8_t txbuf[1];  // empty buff for commands to external ADC chips
   uint8_t cellModuleReadings[kNumAdcChannels];
+
+  // fault vars
+  uint8_t cellTempDidFault = false;
+  uint8_t bmsDidFault = false;
+  uint8_t imdDidFault = false;
 
   while (true) {
     // TODO: Make an iterator for the SpiBus based on subsets of slaves
@@ -108,6 +116,13 @@ static THD_FUNCTION(spiThread2, arg) {
         // convert SPI bytes to an 8b compressed temperature
         cellModuleReadings[channelIndex] = adcToTemp(rxbuf);
 
+        // set cell temp fault high if threshold was crossed
+        if (cellModuleReadings[channelIndex] > faultTempValue
+            && !cellTempDidFault) {
+          palWriteLine(LINE_ARD_D3, PAL_HIGH);  // init value
+          cellTempDidFault = true;
+        }
+
         // release for next chip, channel
         spiBus->releaseSlave();
       }
@@ -125,6 +140,12 @@ static THD_FUNCTION(spiThread2, arg) {
         (CAN_BUS).queueTxMessage(cellTempMessage);
       }
     }
+
+    // check for fault status of BMS and IMD digital inputs
+    // ...
+
+    // output a fault packet containing fault states of temp, BMS, and IMD
+    // ...
 
     // throttle back thread runloop to prevent overconsumption of resources
     chThdSleepMilliseconds(200);
@@ -209,6 +230,10 @@ int main() {
   chibios_rt::Mutex canBusMut;
   chibios_rt::Mutex spiBusMut;
 
+  // fault signal I/O pins
+  palSetLineMode(LINE_ARD_D3, PAL_MODE_OUTPUT_PUSHPULL);  // mode
+  palWriteLine(LINE_ARD_D3, PAL_LOW);  // init value
+
   // create void* compatible obj
   std::vector<void*> args = {&canBus, &canBusMut};
 
@@ -246,7 +271,6 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   static constexpr float kVref = 3.315;
   static constexpr float kAdcMax = 1023.0;
   static constexpr uint8_t kMaxTemp = 255;  // max of 63.75C
-  static constexpr uint8_t kCompressionScalar = 4;
 
   // Pack bits from SPI bytes into single 10b ADC reading:
   // (upper 7 bits of the first byte, in the upper 7 position) |
@@ -282,7 +306,7 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   // Compute 8b compressed temperature from base and base offset
   // Interpolated value is multiplied by 4 to scale from 0-63.75 to 0-255
   // (while maintaining a .25C resolution w.r.t. the fp equivalent)
-  uint16_t temp = kCompressionScalar *
+  uint16_t temp = g_kTempCompressionScalar *
                   (interpolationSegment.baseTemp - interpolatedBaseOffset);
 
   // convert to uint8 with resolution of 0.25 degrees C
