@@ -117,8 +117,8 @@ static THD_FUNCTION(spiThread2, arg) {
         cellModuleReadings[channelIndex] = adcToTemp(rxbuf);
 
         // set cell temp fault high if threshold was crossed
-        if (cellModuleReadings[channelIndex] > faultTempValue
-            && !cellTempDidFault) {
+        if (!cellTempDidFault
+            && cellModuleReadings[channelIndex] > faultTempValue) {
           palWriteLine(LINE_ARD_D3, PAL_HIGH);  // init value
           cellTempDidFault = true;
         }
