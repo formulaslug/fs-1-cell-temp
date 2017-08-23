@@ -1,9 +1,8 @@
 // Copyright (c) 2016-2017 Formula Slug. All Rights Reserved.
 
-#include <stdint.h>
-
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <memory>
 #include <mutex>
 
@@ -20,8 +19,8 @@
 // module function prototypes
 uint8_t adcToTemp(uint8_t* rxbuf);
 
-static constexpr int32_t g_kVoltageToTempLength = 70;
-static constexpr int32_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
+static constexpr uint8_t g_kVoltageToTempLength = 70;
+static constexpr uint8_t g_kMaxVoltageIndex = g_kVoltageToTempLength - 1;
 
 // Lookup table for voltage->temperature conversion. Used to find which linearly
 // interpolable temperature range a given voltage falls in.
@@ -94,7 +93,7 @@ static THD_FUNCTION(spiThread2, arg) {
     for (uint8_t chipIndex = 0; chipIndex < kNumAdcSlaves; ++chipIndex) {
       // spiBus->acquireSlave(2); // chip 2 not working
       // for each channel on the current chip
-      for (int32_t channelIndex = 0; channelIndex < kNumAdcChannels;
+      for (uint8_t channelIndex = 0; channelIndex < kNumAdcChannels;
            ++channelIndex) {
         // acquire for current chip, current channel
         spiBus->acquireSlave(chipIndex);
@@ -226,7 +225,7 @@ int main() {
                     spiThread2, &args);
 
   // Successful startup indicator
-  for (int32_t i = 0; i < 4; ++i) {
+  for (int i = 0; i < 4; ++i) {
     palWriteLine(LINE_LED_GREEN, PAL_HIGH);
     chThdSleepMilliseconds(50);
     palWriteLine(LINE_LED_GREEN, PAL_LOW);
@@ -246,40 +245,43 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   // voltage at max supported temperature (63.75C)
   static constexpr float kVref = 3.315;
   static constexpr float kAdcMax = 1023.0;
-  static constexpr int32_t kMaxTemperature = 255;  // max of 63.75C
-  static constexpr int32_t kCompressionScalar = 4;
+  static constexpr uint8_t kMaxTemp = 255;  // max of 63.75C
+  static constexpr uint8_t kCompressionScalar = 4;
 
   // Pack bits from SPI bytes into single 10b ADC reading:
   // (upper 7 bits of the first byte, in the upper 7 position) |
   //    (upper 3 bits of the second byte, in the lower 3 position)
-  int32_t raw = ((rxbuf[0] & 0x7f) << 3) | ((rxbuf[1] & 0xe0) >> 5);
+  uint16_t raw = ((rxbuf[0] & 0x7f) << 3) | ((rxbuf[1] & 0xe0) >> 5);
 
-  // Convert raw reading to voltage based on ADC resolution and Vref, then to
-  // an integer with 0.01V resolution.
-  int32_t voltage = (raw / kAdcMax) * kVref * 100;
+  // convert raw reading to voltage based on ADC resolution and Vref
+  float voltage = (raw / kAdcMax) * kVref;
 
-  // Map voltage from 1.48V-2.17V range to integers 0-69.
+  // Convert fp voltage to integer (with 0.01V resolution), then normalize to
+  // 0=148 (1.48V) and 69=217 (2.17V)
   // Voltages below 0C (> 2.17V) are unlikely and irrelevant to fault detection.
   // Voltages above 63.75C (< 1.48V) are implausible due to system fault @ 55C.
-  int32_t lookupIndex = voltage - 148;
+  int32_t lookupIndex = voltage * 100 - 148;
 
   // clamp index between 0 and 69
   lookupIndex = std::clamp<int32_t>(lookupIndex, 0, g_kMaxVoltageIndex);
 
   // fetch linearly interpolable range (e.g. 0-5 degrees C)
-  const auto& interpolationSegment = g_voltageToTemp[lookupIndex];
+  auto& interpolationSegment = g_voltageToTemp[lookupIndex];
 
+  // TODO: change to uint8_t (need to test effect on temp resolution)
   // Compute temperature offset from upper bound of the respective 5 degree,
   // linearly interpolable range
-  int32_t interpolatedBaseOffset =
-      5 * (voltage - interpolationSegment.start) / interpolationSegment.length;
+  float interpolatedBaseOffset = 5 *
+                                 (voltage * 100 - interpolationSegment.start) /
+                                 interpolationSegment.length;
 
-  // Compute 8b compressed temperature from base and base offset.
+  // Compute 8b compressed temperature from base and base offset
   // Interpolated value is multiplied by 4 to scale from 0-63.75 to 0-255
-  // (while maintaining a .25C resolution w.r.t. the fp equivalent).
-  int32_t temperature = kCompressionScalar * (interpolationSegment.baseTemp -
-                                              interpolatedBaseOffset);
+  // (while maintaining a .25C resolution w.r.t. the fp equivalent)
+  uint16_t temp = kCompressionScalar *
+                  (interpolationSegment.baseTemp - interpolatedBaseOffset);
 
-  // Clamp to max temperature that can be represented by single uint8
-  return std::min(temperature, kMaxTemperature);
+  // convert to uint8 with resolution of 0.25 degrees C
+  // clamp to max temp that can be represented by single uint8
+  return std::min<uint16_t>(temp, kMaxTemp);
 }
