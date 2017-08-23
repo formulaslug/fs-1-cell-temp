@@ -83,7 +83,7 @@ endif
 #
 
 # Define project name here
-PROJECT = fs-1-primary
+PROJECT = fs-1-cell-temp
 
 # Imported source files and paths
 CHIBIOS = ChibiOS

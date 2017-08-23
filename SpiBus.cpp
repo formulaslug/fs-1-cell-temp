@@ -24,10 +24,10 @@ constexpr SPIConfig MakeConfig(SpiBusBaudRate baud, uint8_t ssPin) {
   return {NULL, GPIOA, ssPin, cr1, cr2};
 }
 
-SpiBus::SpiBus(SpiBusBaudRate baud, const uint8_t* slave_pins,
-               const uint8_t num_slaves) {
+SpiBus::SpiBus(SpiBusBaudRate baud, const uint8_t* slavePins,
+               const uint8_t numSlaves) {
   // init private vars from params
-  m_numSlaves = num_slaves;
+  m_numSlaves = numSlaves;
 
   // init SPI pins
   // SCK
@@ -37,18 +37,18 @@ SpiBus::SpiBus(SpiBusBaudRate baud, const uint8_t* slave_pins,
   // MOSI
   palSetPadMode(GPIOA, 7, PAL_MODE_ALTERNATE(5) | PAL_STM32_OSPEED_HIGHEST);
   // SS pins
-  palSetPadMode(GPIOA, slave_pins[0],
+  palSetPadMode(GPIOA, slavePins[0],
                 PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-  palSetPadMode(GPIOA, slave_pins[1],
+  palSetPadMode(GPIOA, slavePins[1],
                 PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-  palSetPadMode(GPIOA, slave_pins[2],
+  palSetPadMode(GPIOA, slavePins[2],
                 PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-  palSetPadMode(GPIOA, slave_pins[3],
+  palSetPadMode(GPIOA, slavePins[3],
                 PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
 
   // create all config structs for each slave
-  for (uint8_t slave_index = 0; slave_index < m_numSlaves; ++slave_index) {
-    m_slaveConfigs[slave_index] = MakeConfig(baud, slave_pins[slave_index]);
+  for (uint8_t slaveIndex = 0; slaveIndex < m_numSlaves; ++slaveIndex) {
+    m_slaveConfigs[slaveIndex] = MakeConfig(baud, slavePins[slaveIndex]);
   }
 }
 
@@ -56,14 +56,6 @@ SpiBus::~SpiBus() {
   spiUnselect(&SPID1);    // de-assert chip select
   spiReleaseBus(&SPID1);  // release ownership of bus as master
 }
-
-/*
- * @desc switches the slave select signal to the next device in the originally
- *       passed ssPins
- */
-// SpiBus::tickSlaveSelect() {
-//   ;
-// }
 
 /*
  * @desc Reads `length` bytes from txbuf and sends over SPI bus
