@@ -263,11 +263,7 @@ uint8_t adcToTemp(uint8_t* rxbuf) {
   int32_t lookupIndex = voltage * 100 - 148;
 
   // clamp index to range [0, 69]
-  if (lookupIndex < 0) {
-    lookupIndex = 0;
-  } else if (lookupIndex > g_kMaxVoltageIndex) {
-    lookupIndex = g_kMaxVoltageIndex;
-  }
+  lookupIndex = std::clamp<int32_t>(lookupIndex, 0, g_kMaxVoltageIndex);
 
   // fetch linearly interpolable range (e.g. 0-5 degrees C)
   auto& interpolationSegment = g_voltageToTemp[lookupIndex];
