@@ -9,6 +9,8 @@
 
 // COB-IDs: MAX LENGTH of 12 bits, only the LSB 12 should be used
 // IDs specified in format 0x<system-id><node-id><function-id>
+// NOTE: The constexprs below are now bit-shifted, there OR'd as-is so
+//       the values must be in the correct hex digit.
 // System IDs: 6 = FS System
 // Node IDs:
 //   1 = Primary Controller, (node 3)
@@ -19,6 +21,7 @@
 //     3 = ADC Chip 2 Reading
 //     4 = ADC Chip 3 Reading
 //     5 = ADC Chip 4 Reading
+//     6 = Fault Statuses for Temp, BMS, and IMD
 // Universal Function IDs:
 //   1 = Heartbeat
 constexpr uint32_t kSysIdFs = 0x600;
@@ -26,6 +29,7 @@ constexpr uint32_t kNodeIdPrimary = 0x010;
 constexpr uint32_t kNodeIdSecondary = 0x020;
 constexpr uint32_t kNodeIdCellTemp = 0x030;
 constexpr uint32_t kFuncIdCellTempAdc[4] = {0x002, 0x003, 0x004, 0x005};
+constexpr uint32_t kFuncIdFaultStatuses = 0x006;
 
 constexpr uint32_t kCobIdTPDO5 = 0x241;  // including throttle voltage payload
 constexpr uint32_t kCobIdNode3Heartbeat = 0x611;  // changed from 0x003
@@ -43,6 +47,12 @@ struct HeartbeatMessage : public CANTxFrame {
 
 struct CellTempMessage : public CANTxFrame {
   CellTempMessage(uint32_t adcChipId, uint8_t cellModuleReadings[7]);
+};
+
+struct FaultStatusesMessage : public CANTxFrame {
+  FaultStatusesMessage(uint8_t tempFaultStatus,
+                       uint8_t bmsFaultStatus,
+                       uint8_t imdFaultStatus);
 };
 
 struct ThrottleMessage : public CANTxFrame {
