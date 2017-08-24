@@ -23,4 +23,5 @@ modifiableFileExclude {
   chconf\.h$
   halconf\.h$
   mcuconf\.h$
+  test/src/gtest
 }
