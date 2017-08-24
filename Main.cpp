@@ -94,6 +94,8 @@ static THD_FUNCTION(spiThread2, arg) {
   uint8_t imdDidFault = false;
 
   while (true) {
+    uint8_t tempDidNonPersistentFault = false;
+
     // TODO: Make an iterator for the SpiBus based on subsets of slaves
     // Read analog values on 7 of the 8 channels on the 4 ADC chips and dump
     // them on the CAN network as 4 separate frames for each chip (set of 7 cell
@@ -116,11 +118,9 @@ static THD_FUNCTION(spiThread2, arg) {
         // convert SPI bytes to an 8b compressed temperature
         cellModuleReadings[channelIndex] = adcToTemp(rxbuf);
 
-        // set cell temp fault high if threshold was crossed
-        if (!tempDidFault
-            && cellModuleReadings[channelIndex] > faultTempValue) {
-          palWriteLine(LINE_ARD_D3, PAL_LOW);  // init value
-          tempDidFault = true;
+        // set non-persistent fault when a cell is beyond threshold
+        if (cellModuleReadings[channelIndex] >= faultTempValue) {
+          tempDidNonPersistentFault = true;
         }
 
         // release for next chip, channel
@@ -141,12 +141,36 @@ static THD_FUNCTION(spiThread2, arg) {
       }
     }
 
-    // check for fault status of BMS and IMD digital inputs
-    if (!bmsDidFault && palReadLine(LINE_ARD_D7) == PAL_LOW) {
-      bmsDidFault = true;
+    // Output the non-persistent cell temp fault signal LOW if
+    // non-persistent fault was generated. This will trigger a
+    // latching relay that allows this state to be persistent across
+    // power cycling, and must therefore be read back into the system.
+    // The system digital output for the temp fault signal will only
+    // be LOW when any cell's temp is actively exceeding the allowed
+    // range. The input read back, however, will remain LOW until the
+    // latching relay is reset after any cell exceeded the limit for
+    // ANY amount of time.
+    if (tempDidNonPersistentFault) {
+      palWriteLine(LINE_ARD_D3, PAL_LOW);  // output fault
+    } else {
+      palWriteLine(LINE_ARD_D3, PAL_HIGH);  // output no fault
     }
-    if (!imdDidFault && palReadLine(LINE_ARD_D8) == PAL_LOW) {
+
+    // check for persistent fault status of temp, BMS and IMD digital inputs
+    if (!tempDidFault && palReadLine(LINE_ARD_D7) == PAL_LOW) {
+      tempDidFault = true;
+    } else if (tempDidFault && palReadLine(LINE_ARD_D7) == PAL_HIGH) {
+      tempDidFault = false;
+    }
+    if (!bmsDidFault && palReadLine(LINE_ARD_D8) == PAL_LOW) {
+      bmsDidFault = true;
+    } else if (bmsDidFault && palReadLine(LINE_ARD_D8) == PAL_HIGH) {
+      bmsDidFault = false;
+    }
+    if (!imdDidFault && palReadLine(LINE_ARD_D9) == PAL_LOW) {
       imdDidFault = true;
+    } else if (imdDidFault && palReadLine(LINE_ARD_D9) == PAL_HIGH) {
+      imdDidFault = false;
     }
 
     // output a fault packet containing fault states of temp, BMS, and IMD
@@ -247,10 +271,14 @@ int main() {
   chibios_rt::Mutex spiBusMut;
 
   // fault signal I/O pins
-  palSetLineMode(LINE_ARD_D3, PAL_MODE_OUTPUT_PUSHPULL);  // temp mode
+  palSetLineMode(LINE_ARD_D3, PAL_MODE_OUTPUT_PUSHPULL);  // temp output mode
   palWriteLine(LINE_ARD_D3, PAL_HIGH);  // init temp fault value (no fault)
-  palSetLineMode(LINE_ARD_D7, PAL_MODE_INPUT);  // BMS mode
-  palSetLineMode(LINE_ARD_D8, PAL_MODE_INPUT);  // IMD mode
+  // NOTE: The temp fault status must be read back in so that it is
+  //       persistent across power cycles, which the connected latching
+  //       relays allow.
+  palSetLineMode(LINE_ARD_D7, PAL_MODE_INPUT);  // temp input mode
+  palSetLineMode(LINE_ARD_D8, PAL_MODE_INPUT);  // BMS mode
+  palSetLineMode(LINE_ARD_D9, PAL_MODE_INPUT);  // IMD mode
 
   // create void* compatible obj
   std::vector<void*> args = {&canBus, &canBusMut};
