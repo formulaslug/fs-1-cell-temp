@@ -273,6 +273,8 @@ int main() {
   // fault signal I/O pins
   palSetLineMode(LINE_ARD_D3, PAL_MODE_OUTPUT_PUSHPULL);  // temp output mode
   palWriteLine(LINE_ARD_D3, PAL_HIGH);  // init temp fault value (no fault)
+
+  // TODO: Must enable internal pull-ups on these pins
   // NOTE: The temp fault status must be read back in so that it is
   //       persistent across power cycles, which the connected latching
   //       relays allow.
