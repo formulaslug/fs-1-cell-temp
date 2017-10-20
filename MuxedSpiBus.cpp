@@ -8,7 +8,7 @@
 /* Hard coded to baudrate=140.625kHz, CPHA=0, CPOL=0, MSb first
  * MCP3008's baud maxes out around 3-4MHz
  */
-constexpr SPIConfig MakeConfig(SpiBusBaudRate baud, uint8_t ssPin) {
+constexpr SPIConfig MakeConfig(SpiBusBaudRate baud, uint8_t mssPin) {
   uint16_t cr1 = 0, cr2 = 0;
 
   switch (baud) {
@@ -21,13 +21,21 @@ constexpr SPIConfig MakeConfig(SpiBusBaudRate baud, uint8_t ssPin) {
   }
 
   // slave selects hard-coded to port A
-  return {NULL, GPIOA, ssPin, cr1, cr2};
+  return {NULL, GPIOA, mssPin, cr1, cr2};
 }
 
-MuxedSpiBus::MuxedSpiBus(SpiBusBaudRate baud, const uint8_t* slavePins,
-               const uint8_t numSlaves) {
+MuxedSpiBus::MuxedSpiBus(SpiBusBaudRate baud, const uint8_t mssPin,
+                         const uint8_t* chipSelectors, const uint8_t numChips,
+                         const uint8_t numChipSelectors) {
   // init private vars from params
-  m_numSlaves = numSlaves;
+  m_numChips = numChips;
+  m_numChipSelectors = numChipSelectors;
+  m_chipSelectors = chipSelectors;
+  // Note: ChibiOS HAL SPI lib will assert MSS properly as if it's a
+  //       regular SS pin, however this module will be asserted to MUX
+  //       selector inputs for the actual SPI chips (as opposed to the
+  //       isolator).
+  m_chipConfig = MakeConfig(baud, mssPin);
 
   // init SPI pins
   // SCK
@@ -36,19 +44,10 @@ MuxedSpiBus::MuxedSpiBus(SpiBusBaudRate baud, const uint8_t* slavePins,
   palSetPadMode(GPIOA, 6, PAL_MODE_ALTERNATE(5) | PAL_STM32_OSPEED_HIGHEST);
   // MOSI
   palSetPadMode(GPIOA, 7, PAL_MODE_ALTERNATE(5) | PAL_STM32_OSPEED_HIGHEST);
-  // SS pins
-  palSetPadMode(GPIOA, slavePins[0],
-                PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-  palSetPadMode(GPIOA, slavePins[1],
-                PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-  palSetPadMode(GPIOA, slavePins[2],
-                PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-  palSetPadMode(GPIOA, slavePins[3],
-                PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-
-  // create all config structs for each slave
-  for (uint8_t slaveIndex = 0; slaveIndex < m_numSlaves; ++slaveIndex) {
-    m_slaveConfigs[slaveIndex] = MakeConfig(baud, slavePins[slaveIndex]);
+  // selector pins
+  for (uint8_t i = 0; i < m_numChipSelectors; i++) {
+    palSetPadMode(GPIOA, m_chipSelectors[i],
+                  PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
   }
 }
 
@@ -58,33 +57,68 @@ MuxedSpiBus::~MuxedSpiBus() {
 }
 
 /*
- * @desc Reads `length` bytes from txbuf and sends over SPI bus
+ * @brief Reads `length` bytes from txbuf and sends over SPI bus
  */
 void MuxedSpiBus::send(uint8_t length, const void* txbuf) {
   spiSend(&SPID1, length, txbuf);  // transmit
 }
 
 /*
- * @desc Writes `length` bytes into rxbuf from SPI bus
+ * @brief Writes `length` bytes into rxbuf from SPI bus
  */
 void MuxedSpiBus::recv(uint8_t length, void* rxbuf) {
   spiReceive(&SPID1, length, rxbuf);  // receive
 }
 
 /*
- * @desc Acquire bus for the passed slave select pin index
+ * @brief Acquire bus for the passed slave select pin index
  */
-void MuxedSpiBus::acquireSlave(uint8_t ssPinIndex) {
-  spiAcquireBus(&SPID1);  // acquire ownership of the bus.
-  spiStart(&SPID1,
-           &(m_slaveConfigs[ssPinIndex]));  // setup transfer parameters.
-  spiSelect(&SPID1);                        // slave Select assertion.
+void MuxedSpiBus::acquireSlave(uint8_t chipIndex) {
+  setSelectors(chipIndex);  // set selector pins to correct pattern
+  spiAcquireBus(&SPID1);  // acquire ownership of the bus with MSS
+  // drive chip selects low through multiplixed selectors
+  spiStart(&SPID1, &m_chipConfig);  // setup transfer parameters.
+  spiSelect(&SPID1);  // slave Select assertion.
 }
 
 /*
- * @desc Release bus
+ * @brief Release bus
  */
 void MuxedSpiBus::releaseSlave() {
-  spiUnselect(&SPID1);    // de-assert chip select
+  spiUnselect(&SPID1);  // de-assert chip select
   spiReleaseBus(&SPID1);  // release ownership of bus as master
+}
+
+/*
+ * @brief Drive selector pins to select the chip corresponding to
+ *        passed chip index
+ * @note No need to clear or reset this value, since all 0b00 through
+ *       0b11 correspond to a SPI chip. Deselection is done by driving
+ *       the MSS pin high. This function should be called before
+ *       acquiring the SPI bus so that MSS is driving low AFTER the
+ *       selector pins are setup so that the chip has time to
+ *       multiplex SPI chip I/O.
+ * @note Hard-coded to having 2 selector pins:
+ *       chip index -> C | 0 1 <- mux selector pins for chips
+ *                     - + ---
+ *                     0 | 0 0
+ *                     1 | 0 1
+ *                     2 | 1 0
+ *                     3 | 1 1
+ */
+void MuxedSpiBus::setSelectors(uint8_t chipIndex) {
+  // first selector line
+  // TODO: Confirm that can use this pin number, here (m_chipSelectors[x])
+  if (chipIndex == 0 || chipIndex == 1) {
+    palWriteLine(m_chipSelectors[0], PAL_LOW);
+  } else {
+    // LINE_LED_GREEN
+    palWriteLine(m_chipSelectors[0], PAL_HIGH);
+  }
+  // second selector line
+  if (chipIndex == 0 || chipIndex == 2) {
+    palWriteLine(m_chipSelectors[1], PAL_LOW);
+  } else {
+    palWriteLine(m_chipSelectors[1], PAL_HIGH);
+  }
 }
