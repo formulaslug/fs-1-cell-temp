@@ -110,15 +110,15 @@ void MuxedSpiBus::setSelectors(uint8_t chipIndex) {
   // first selector line
   // TODO: Confirm that can use this pin number, here (m_chipSelectors[x])
   if (chipIndex == 0 || chipIndex == 1) {
-    palWriteLine(m_chipSelectors[0], PAL_LOW);
+    palWriteLine(LINE_ARD_A2, PAL_LOW);
   } else {
     // LINE_LED_GREEN
-    palWriteLine(m_chipSelectors[0], PAL_HIGH);
+    palWriteLine(LINE_ARD_A2, PAL_HIGH);
   }
   // second selector line
   if (chipIndex == 0 || chipIndex == 2) {
-    palWriteLine(m_chipSelectors[1], PAL_LOW);
+    palWriteLine(LINE_ARD_A1, PAL_LOW);
   } else {
-    palWriteLine(m_chipSelectors[1], PAL_HIGH);
+    palWriteLine(LINE_ARD_A1, PAL_HIGH);
   }
 }

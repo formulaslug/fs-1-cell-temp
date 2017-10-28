@@ -8,7 +8,7 @@
 
 #include "CanBus.h"
 #include "CanOpenPdo.h"
-#include "SpiBus.h"
+#include "MuxedSpiBus.h"
 #include "ch.hpp"
 #include "hal.h"
 
@@ -71,15 +71,21 @@ static THD_FUNCTION(spiThread2, arg) {
   // Setup SPI comm. Command format is:
   // 0b00110000=<null><null><start><single-ended><d2><d1><d0><null>
 
-  constexpr uint8_t kNumAdcSlaves = 4;
+  // SPI config
+  constexpr uint8_t kNumChips = 4;
+  constexpr uint8_t kNumChipSelectors = 2;  // ignoring 8th channel on all chips
+  constexpr uint8_t kChipSelectors[kNumChipSelectors] = { 3, 1 };
+  // constexpr uint8_t kChipSelectors[kNumChipSelectors] = { LINE_ARD_A2, LINE_ARD_A1 };
+  constexpr uint8_t kMssPin = 4; // A3 = PA_4
+  auto spiBus =
+      std::make_unique<MuxedSpiBus>(SpiBusBaudRate::k140k,
+          kMssPin, kChipSelectors, kNumChips, kNumChipSelectors);
+
+  // ADC comm and data config
   constexpr uint8_t kNumAdcChannels = 7;  // ignoring 8th channel on all chips
   constexpr uint8_t kBaseCommand = 0x30;  // null, null, start, single_ended
-  constexpr uint8_t kSsPins[kNumAdcSlaves] = {4, 3, 1, 0};
   constexpr uint8_t faultTemp = 55;  // degree C
   constexpr uint8_t faultTempValue = faultTemp * g_kTempCompressionScalar;
-
-  auto spiBus =
-      std::make_unique<SpiBus>(SpiBusBaudRate::k140k, kSsPins, kNumAdcSlaves);
 
   /*
    * SPI TX and RX buffers.
@@ -100,7 +106,7 @@ static THD_FUNCTION(spiThread2, arg) {
     // Read analog values on 7 of the 8 channels on the 4 ADC chips and dump
     // them on the CAN network as 4 separate frames for each chip (set of 7 cell
     // modules)
-    for (uint8_t chipIndex = 0; chipIndex < kNumAdcSlaves; ++chipIndex) {
+    for (uint8_t chipIndex = 0; chipIndex < kNumChips; ++chipIndex) {
       // spiBus->acquireSlave(2); // chip 2 not working
       // for each channel on the current chip
       for (uint8_t channelIndex = 0; channelIndex < kNumAdcChannels;
