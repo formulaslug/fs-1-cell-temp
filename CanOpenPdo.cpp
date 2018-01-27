@@ -4,6 +4,23 @@
 
 #include <cstring>
 
+FaultStatusesMessage::FaultStatusesMessage(uint8_t tempDidFault,
+                                           uint8_t bmsDidFault,
+                                           uint8_t imdDidFault) {
+  IDE = CAN_IDE_EXT;
+  EID = kSysIdFs | kNodeIdCellTemp | kFuncIdFaultStatuses;
+  RTR = CAN_RTR_DATA;
+  DLC = 1;  // num data bytes in frame
+
+  // clean fault statuses in case more than LS bit set
+  tempDidFault = tempDidFault & 0x1;
+  bmsDidFault = bmsDidFault & 0x1;
+  imdDidFault = imdDidFault & 0x1;
+
+  // copy passed data into frame's data byte
+  data8[0] = (tempDidFault << 2) | (bmsDidFault << 1) | (imdDidFault);
+}
+
 CellTempMessage::CellTempMessage(uint32_t adcChipId,
                                  uint8_t cellModuleReadings[7]) {
   IDE = CAN_IDE_EXT;
