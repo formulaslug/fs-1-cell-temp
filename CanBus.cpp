@@ -85,6 +85,7 @@ void CanBus::setFilters(std::initializer_list<uint32_t> filters) {
   static_cast<void>(filterArray);
 }
 
+// NOTE: Unused - implemented for testing
 bool CanBus::send(uint64_t data) {
   static CANTxFrame msg;
 

@@ -14,7 +14,7 @@
 // System IDs: 6 = FS System
 // Node IDs:
 //   1 = Primary Controller, (node 3)
-//   2 = Secondary Controller, (node 4)
+//   2 = Secondary Controller, (node 4) (NOTE: Unused)
 //   3 = Cell Temp Monitor
 //     // Function IDs
 //     2 = ADC Chip 1 Reading

@@ -49,6 +49,9 @@ MuxedSpiBus::MuxedSpiBus(SpiBusBaudRate baud, const uint8_t mssPin,
     palSetPadMode(GPIOA, m_chipSelectors[i],
                   PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
   }
+  // mss pin —- needed to manually drive the mssPin
+  // TODO: parameterize the mss pin
+  palSetPadMode(GPIOA, 4, PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
 }
 
 MuxedSpiBus::~MuxedSpiBus() {
@@ -75,6 +78,8 @@ void MuxedSpiBus::recv(uint8_t length, void* rxbuf) {
  */
 void MuxedSpiBus::acquireSlave(uint8_t chipIndex) {
   setSelectors(chipIndex);  // set selector pins to correct pattern
+  // TODO: parameterize the mss pin
+  palWriteLine(LINE_ARD_A3, PAL_LOW); // need to manually drive the mss pin
   spiAcquireBus(&SPID1);  // acquire ownership of the bus with MSS
   // drive chip selects low through multiplixed selectors
   spiStart(&SPID1, &m_chipConfig);  // setup transfer parameters.
@@ -86,6 +91,8 @@ void MuxedSpiBus::acquireSlave(uint8_t chipIndex) {
  */
 void MuxedSpiBus::releaseSlave() {
   spiUnselect(&SPID1);  // de-assert chip select
+  // TODO: parameterize the mss pin
+  palWriteLine(LINE_ARD_A3, PAL_LOW); // need to manually drive the mss pin
   spiReleaseBus(&SPID1);  // release ownership of bus as master
 }
 
@@ -108,7 +115,6 @@ void MuxedSpiBus::releaseSlave() {
  */
 void MuxedSpiBus::setSelectors(uint8_t chipIndex) {
   // first selector line
-  // TODO: Confirm that can use this pin number, here (m_chipSelectors[x])
   if (chipIndex == 0 || chipIndex == 1) {
     palWriteLine(LINE_ARD_A2, PAL_LOW);
   } else {

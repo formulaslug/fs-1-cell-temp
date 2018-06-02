@@ -91,7 +91,7 @@ static THD_FUNCTION(spiThread2, arg) {
    * SPI TX and RX buffers.
    */
   uint8_t rxbuf[2];
-  uint8_t txbuf[1];  // empty buff for commands to external ADC chips
+  uint8_t txbuf[2];  // empty buff for commands to external ADC chips
   uint8_t cellModuleReadings[kNumAdcChannels];
 
   // fault vars
@@ -115,6 +115,7 @@ static THD_FUNCTION(spiThread2, arg) {
         spiBus->acquireSlave(chipIndex);
 
         // set the channel address in LS nibble (LS bit is null, so << 1)
+        // txbuf[0] = kBaseCommand | (channelIndex << 1);
         txbuf[0] = kBaseCommand | (channelIndex << 1);
 
         // send command word then read in data
@@ -131,6 +132,7 @@ static THD_FUNCTION(spiThread2, arg) {
 
         // release for next chip, channel
         spiBus->releaseSlave();
+
       }
 
       // pack 7 module temp readings into CAN frame
@@ -193,8 +195,29 @@ static THD_FUNCTION(spiThread2, arg) {
       (CAN_BUS).queueTxMessage(faultStatusesMessage);
     }
 
-    // throttle back thread runloop to prevent overconsumption of resources
-    chThdSleepMilliseconds(200);
+  }
+  // throttle back thread runloop to prevent overconsumption of resources
+  chThdSleepMilliseconds(200);
+}
+
+/**
+ * @desc Performs periodic tasks every second
+ */
+static THD_WORKING_AREA(heartbeatThreadFuncWa, 128);
+static THD_FUNCTION(heartbeatThreadFunc, arg) {
+  chRegSetThreadName("NODE HEARTBEAT");
+
+  while (1) {
+    // enqueue heartbeat message to g_canTxQueue
+    // TODO: Remove need for node ID param to heartbeat obj (passed
+    //       during instantiation of CAN bus)
+    const HeartbeatMessage heartbeatMessage(kNodeIdCellTemp);
+    {
+      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
+      (CAN_BUS).queueTxMessage(heartbeatMessage);
+    }
+    // transmit node's (self) heartbeat every 1s
+    chThdSleepMilliseconds(1000);
   }
 }
 
@@ -238,25 +261,6 @@ static THD_FUNCTION(canRxThreadFunc, arg) {
   }
 
   chEvtUnregister(&CAND1.rxfull_event, &el);
-}
-
-/**
- * @desc Performs periodic tasks every second
- */
-static THD_WORKING_AREA(heartbeatThreadFuncWa, 128);
-static THD_FUNCTION(heartbeatThreadFunc, arg) {
-  chRegSetThreadName("NODE HEARTBEAT");
-
-  while (1) {
-    // enqueue heartbeat message to g_canTxQueue
-    const HeartbeatMessage heartbeatMessage(kNodeIdCellTemp);
-    {
-      std::lock_guard<chibios_rt::Mutex> lock(CAN_BUS_MUT);
-      (CAN_BUS).queueTxMessage(heartbeatMessage);
-    }
-    // transmit node's (self) heartbeat every 1s
-    chThdSleepMilliseconds(1000);
-  }
 }
 
 int main() {
@@ -322,7 +326,7 @@ int main() {
 // TODO: Add in per-channel moving average
 uint8_t adcToTemp(uint8_t* rxbuf) {
   // voltage at max supported temperature (63.75C)
-  static constexpr float kVref = 3.315;
+  static constexpr float kVref = 3.3;
   static constexpr float kAdcMax = 1023.0;
   static constexpr uint8_t kMaxTemp = 255;  // max of 63.75C
 
