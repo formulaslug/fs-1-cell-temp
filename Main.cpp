@@ -288,9 +288,9 @@ int main() {
   // NOTE: The temp fault status must be read back in so that it is
   //       persistent across power cycles, which the connected latching
   //       relays allow.
-  palSetLineMode(LINE_ARD_D7, PAL_MODE_INPUT);  // temp input mode
-  palSetLineMode(LINE_ARD_D8, PAL_MODE_INPUT);  // BMS mode
-  palSetLineMode(LINE_ARD_D9, PAL_MODE_INPUT);  // IMD mode
+  palSetLineMode(LINE_ARD_D7, PAL_MODE_INPUT_PULLUP);  // temp input mode
+  palSetLineMode(LINE_ARD_D8, PAL_MODE_INPUT_PULLUP);  // BMS mode
+  palSetLineMode(LINE_ARD_D9, PAL_MODE_INPUT_PULLUP);  // IMD mode
 
   // create void* compatible obj
   std::vector<void*> args = {&canBus, &canBusMut};
