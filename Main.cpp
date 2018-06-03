@@ -21,6 +21,8 @@ int main() {
   halInit();
   chSysInit();
 
+  chThdSleepMilliseconds(5000);
+
   while (1) {
     // Blink continusouly
     palWriteLine(LINE_LED_GREEN, PAL_HIGH);
