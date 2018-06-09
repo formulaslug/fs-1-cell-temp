@@ -194,10 +194,9 @@ static THD_FUNCTION(spiThread2, arg) {
       // queue CAN message for one set of 7 cell modules
       (CAN_BUS).queueTxMessage(faultStatusesMessage);
     }
-
+    // throttle back thread runloop to prevent overconsumption of resources
+    chThdSleepMilliseconds(100);
   }
-  // throttle back thread runloop to prevent overconsumption of resources
-  chThdSleepMilliseconds(200);
 }
 
 /**
