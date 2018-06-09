@@ -276,7 +276,7 @@ int main() {
 
   // INIT INTERFACES
   // Activate CAN driver 1 (PA11 = CANRX, PA12 = CANTX)
-  CanBus canBus(kNodeIdCellTemp, CanBusBaudRate::k250k, false);
+  CanBus canBus(kNodeIdCellTemp, CanBusBaudRate::k1M, false);
   chibios_rt::Mutex canBusMut;
   chibios_rt::Mutex spiBusMut;
 
